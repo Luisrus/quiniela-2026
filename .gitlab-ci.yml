@@ -1,0 +1,57 @@
+# Variables en Settings > CI/CD > Variables (masked + protected):
+#
+# Firebase Web (build + deploy):
+#   FIREBASE_API_KEY, FIREBASE_AUTH_DOMAIN, FIREBASE_PROJECT_ID,
+#   FIREBASE_STORAGE_BUCKET, FIREBASE_MESSAGING_SENDER_ID,
+#   FIREBASE_APP_ID, FIREBASE_VAPID_KEY
+#
+# Firebase deploy:
+#   FIREBASE_TOKEN  (generar con: firebase login:ci)
+#
+# Scripts programados:
+#   FIREBASE_SERVICE_ACCOUNT  (JSON o base64 del service account)
+#   FOOTBALL_DATA_TOKEN       (token de Football-Data.org)
+#
+# Pipeline schedules (Build > Pipeline schedules):
+#   Rama main, cron */10 * * * * para actualizar resultados y recordatorios.
+
+stages:
+  - deploy
+  - scheduled
+
+deploy-hosting:
+  stage: deploy
+  image: node:22-alpine
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: never
+    - if: '$CI_COMMIT_BRANCH == "main"'
+  script:
+    - npm ci
+    - node scripts/generate-environment.mjs production
+    - npm run build
+    - npm install -g firebase-tools
+    - firebase deploy --only hosting,firestore:rules --token "$FIREBASE_TOKEN" --non-interactive
+  environment:
+    name: production
+    url: https://rus-quiniela.web.app
+
+actualizar-resultados:
+  stage: scheduled
+  image: node:22-alpine
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+    - when: never
+  script:
+    - npm ci
+    - npm run actualizar-resultados
+
+recordar-pronosticos:
+  stage: scheduled
+  image: node:22-alpine
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+    - when: never
+  script:
+    - npm ci
+    - npm run recordar-pronosticos

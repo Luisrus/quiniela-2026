@@ -1,0 +1,373 @@
+<div class="admin-page">
+  <header class="admin-header">
+    <div>
+      <p class="admin-kicker">Panel admin</p>
+      <h1>Quiniela</h1>
+      <p class="admin-subtitle">
+        @if (activeTab() === 'resultados') {
+          {{ partidos().length }} partidos · {{ enRevision() }} pendientes o en juego
+        } @else if (activeTab() === 'pronosticos') {
+          {{ partidosCalendario().length }} partidos en calendario · {{ partidosFinalizados() }} ya jugados
+        } @else {
+          {{ jugadores().length }} jugadores en la convocatoria
+        }
+      </p>
+    </div>
+
+    <app-segmented-control
+      [options]="tabOptions"
+      [value]="activeTab()"
+      (valueChange)="cambiarTab($event)"
+    />
+  </header>
+
+  <main class="admin-list">
+    @if (isLoading()) {
+      @for (row of skeletonRows; track row) {
+        <app-skeleton-card />
+      }
+    } @else if (activeTab() === 'resultados') {
+      @if (partidos().length === 0) {
+        <app-empty-state
+          emoji="VAR"
+          title="No hay partidos"
+          sub="El calendario todavia no entro a la cancha"
+        />
+      } @else {
+        @for (partido of partidos(); track partido.id; let i = $index) {
+          @let draft = draftFor(partido);
+          <article [class]="'admin-card fade-up s' + (i + 1 > 10 ? 10 : i + 1)">
+            <div class="admin-card-top">
+              <div>
+                <p class="match-phase">{{ partido.fase }} - {{ fechaLabel(partido) }}</p>
+                <p class="match-status" [attr.data-status]="draft.estado">
+                  {{ estadoLabel(draft.estado) }}
+                </p>
+              </div>
+
+              <select
+                class="status-select"
+                [value]="draft.estado"
+                (change)="updateEstado(partido, $event)"
+                aria-label="Estado del partido"
+              >
+                @for (estado of estados; track estado) {
+                  <option [value]="estado">{{ estadoLabel(estado) }}</option>
+                }
+              </select>
+            </div>
+
+            <div class="score-editor">
+              <label class="team-score">
+                <span class="team-name">
+                  <app-team-flag
+                    class="team-flag"
+                    [name]="partido.equipoLocal"
+                    [url]="crestFor(partido.equipoLocal, partido.banderas.local)"
+                    [size]="21"
+                  />
+                  <span>{{ partido.equipoLocal }}</span>
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  max="99"
+                  inputmode="numeric"
+                  [value]="draft.golesLocal ?? ''"
+                  (input)="updateScore(partido, 'local', $event)"
+                  aria-label="Goles local"
+                />
+              </label>
+
+              <span class="score-separator">-</span>
+
+              <label class="team-score away">
+                <span class="team-name">
+                  <span>{{ partido.equipoVisitante }}</span>
+                  <app-team-flag
+                    class="team-flag"
+                    [name]="partido.equipoVisitante"
+                    [url]="crestFor(partido.equipoVisitante, partido.banderas.visitante)"
+                    [size]="21"
+                  />
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  max="99"
+                  inputmode="numeric"
+                  [value]="draft.golesVisitante ?? ''"
+                  (input)="updateScore(partido, 'visitante', $event)"
+                  aria-label="Goles visitante"
+                />
+              </label>
+            </div>
+
+            <button
+              type="button"
+              class="save-button"
+              [disabled]="savingId() === partido.id"
+              (click)="guardar(partido)"
+            >
+              @if (savingId() === partido.id) {
+                Guardando...
+              } @else {
+                Guardar y calcular puntos
+              }
+            </button>
+          </article>
+        }
+      }
+    } @else if (activeTab() === 'pronosticos') {
+      @if (partidosCalendario().length === 0) {
+        <app-empty-state
+          emoji="0-0"
+          title="Sin partidos"
+          sub="Primero necesitas partidos en el calendario"
+        />
+      } @else if (jugadores().length === 0) {
+        <app-empty-state
+          emoji="👥"
+          title="Sin jugadores"
+          sub="Agrega titulares o invitados en la pestaña Jugadores"
+        />
+      } @else {
+        <div class="admin-card admin-picker">
+          <label class="field-label" for="admin-partido-select">Partido (todos, incluye jugados)</label>
+          <select
+            id="admin-partido-select"
+            class="status-select full-width"
+            [value]="selectedPartidoId()"
+            (change)="seleccionarPartido($any($event.target).value)"
+          >
+            @for (partido of partidosCalendario(); track partido.id) {
+              <option [value]="partido.id">
+                {{ partidoOptionLabel(partido) }}
+              </option>
+            }
+          </select>
+
+          <label class="field-label" for="admin-jugador-select">Jugador</label>
+          <select
+            id="admin-jugador-select"
+            class="status-select full-width"
+            [value]="selectedJugadorUid()"
+            (change)="seleccionarJugador($any($event.target).value)"
+          >
+            @for (jugador of jugadores(); track jugador.uid) {
+              <option [value]="jugador.uid">
+                {{ jugador.nombre }} · {{ tipoLabel(jugador.tipo) }}
+              </option>
+            }
+          </select>
+        </div>
+
+        @if (selectedPartido(); as partido) {
+          @if (selectedJugador(); as jugador) {
+            <article class="admin-card">
+              <div class="admin-card-top">
+                <div>
+                  <p class="player-name">{{ jugador.nombre }}</p>
+                  <p class="player-meta">
+                    <span style="display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap">
+                      {{ tipoLabel(jugador.tipo) }} ·
+                      <app-team-flag [name]="partido.equipoLocal" [url]="crestFor(partido.equipoLocal, partido.banderas.local)" [size]="16" />
+                      {{ partido.equipoLocal }} vs {{ partido.equipoVisitante }}
+                      <app-team-flag [name]="partido.equipoVisitante" [url]="crestFor(partido.equipoVisitante, partido.banderas.visitante)" [size]="16" />
+                    </span>
+                  </p>
+                </div>
+              </div>
+
+              <p class="match-status" [attr.data-status]="partido.estado">
+                {{ estadoLabel(partido.estado) }}
+              </p>
+
+              @if (pronosticoGuardado(); as guardado) {
+                <p class="admin-current-pred">
+                  Pronóstico guardado:
+                  <strong>{{ guardado.golesLocal }}-{{ guardado.golesVisitante }}</strong>
+                  @if (guardado.puntosGanados !== null) {
+                    <span>· {{ guardado.puntosGanados }} pts</span>
+                  }
+                </p>
+              } @else {
+                <p class="admin-hint">Este jugador aún no tiene pronóstico para este partido.</p>
+              }
+
+              <div class="score-editor compact">
+                <label class="team-score">
+                  <span class="mini-label">{{ partido.equipoLocal }}</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="99"
+                    inputmode="numeric"
+                    [value]="pronosticoDraft().golesLocal"
+                    (input)="updatePronosticoScore('local', $event)"
+                    aria-label="Goles local pronóstico"
+                  />
+                </label>
+
+                <span class="score-separator">-</span>
+
+                <label class="team-score away">
+                  <span class="mini-label">{{ partido.equipoVisitante }}</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="99"
+                    inputmode="numeric"
+                    [value]="pronosticoDraft().golesVisitante"
+                    (input)="updatePronosticoScore('visitante', $event)"
+                    aria-label="Goles visitante pronóstico"
+                  />
+                </label>
+              </div>
+
+              <button
+                type="button"
+                class="save-button"
+                [disabled]="guardandoPronostico() || !puedeGuardarPronostico()"
+                (click)="guardarPronostico()"
+              >
+                @if (guardandoPronostico()) {
+                  Guardando...
+                } @else if (pronosticoGuardado()) {
+                  Actualizar pronóstico
+                } @else {
+                  Guardar pronóstico
+                }
+              </button>
+            </article>
+
+            <section class="admin-card historial-card">
+              <p class="field-label">Historial de {{ jugador.nombre }}</p>
+              @if (historialJugador().length === 0) {
+                <p class="admin-hint">Todavía no hay pronósticos previos para este jugador.</p>
+              } @else {
+                <div class="historial-list">
+                  @for (item of historialJugador(); track item.pronostico.id) {
+                    <button
+                      type="button"
+                      class="historial-row"
+                      [class.is-active]="item.esSeleccionActual"
+                      (click)="seleccionarDesdeHistorial(item.partido.id)"
+                    >
+                      <span class="historial-match">
+                        <span class="historial-estado">{{ estadoLabel(item.partido.estado) }}</span>
+                        <span class="historial-teams">
+                        <app-team-flag [name]="item.partido.equipoLocal" [url]="crestFor(item.partido.equipoLocal, item.partido.banderas.local)" [size]="16" />
+                        {{ item.partido.equipoLocal }}
+                        vs
+                        {{ item.partido.equipoVisitante }}
+                        <app-team-flag [name]="item.partido.equipoVisitante" [url]="crestFor(item.partido.equipoVisitante, item.partido.banderas.visitante)" [size]="16" />
+                        </span>
+                      </span>
+                      <span class="historial-score">
+                        {{ item.pronostico.golesLocal }}-{{ item.pronostico.golesVisitante }}
+                      </span>
+                    </button>
+                  }
+                </div>
+              }
+            </section>
+          }
+        }
+
+        <p class="admin-footnote">
+          Si el partido ya finalizó, al guardar el pronóstico se recalculan los puntos automáticamente.
+        </p>
+      }
+    } @else {
+      <div class="admin-card admin-invite-form">
+        <p class="field-label">Agregar invitado</p>
+        <p class="admin-hint">Para jugadores que vienen de otra app y no tienen login de Google.</p>
+        <div class="invite-row">
+          <input
+            type="text"
+            class="text-input"
+            placeholder="Nombre del invitado"
+            [value]="nuevoInvitado()"
+            (input)="nuevoInvitado.set($any($event.target).value)"
+          />
+          <button
+            type="button"
+            class="save-button compact-button"
+            [disabled]="creandoInvitado() || nuevoInvitado().trim() === ''"
+            (click)="crearInvitado()"
+          >
+            {{ creandoInvitado() ? '...' : 'Agregar' }}
+          </button>
+        </div>
+      </div>
+
+      @if (jugadores().length === 0) {
+        <app-empty-state
+          emoji="👥"
+          title="Sin jugadores"
+          sub="Los titulares aparecen al iniciar sesión. Agrega invitados arriba."
+        />
+      } @else {
+        @for (jugador of jugadores(); track jugador.uid; let i = $index) {
+          @let jugadorDraft = jugadorDraftFor(jugador);
+          <article [class]="'admin-card fade-up s' + (i + 1 > 10 ? 10 : i + 1)">
+            <div class="admin-card-top">
+              <div>
+                <p class="player-name">{{ jugador.nombre }}</p>
+                <p class="player-meta">{{ jugador.uid }}</p>
+              </div>
+              <span class="tipo-badge" [attr.data-tipo]="jugadorDraft.tipo">
+                {{ tipoLabel(jugadorDraft.tipo) }}
+              </span>
+            </div>
+
+            <label class="field-label" [for]="'nombre-' + jugador.uid">Nombre</label>
+            <input
+              [id]="'nombre-' + jugador.uid"
+              type="text"
+              class="text-input"
+              [value]="jugadorDraft.nombre"
+              (input)="updateJugadorNombre(jugador, $event)"
+            />
+
+            <div class="tipo-toggle-row">
+              <span class="field-label">Tipo</span>
+              <div class="tipo-toggle" role="group" [attr.aria-label]="'Tipo de ' + jugador.nombre">
+                <button
+                  type="button"
+                  class="tipo-toggle-option"
+                  [class.is-active]="jugadorDraft.tipo === 'titular'"
+                  (click)="jugadorDraft.tipo !== 'titular' && toggleJugadorTipo(jugador)"
+                >
+                  Titular
+                </button>
+                <button
+                  type="button"
+                  class="tipo-toggle-option"
+                  [class.is-active]="jugadorDraft.tipo === 'invitado'"
+                  (click)="jugadorDraft.tipo !== 'invitado' && toggleJugadorTipo(jugador)"
+                >
+                  Invitado
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              class="save-button"
+              [disabled]="savingJugadorUid() === jugador.uid"
+              (click)="guardarJugador(jugador)"
+            >
+              @if (savingJugadorUid() === jugador.uid) {
+                Guardando...
+              } @else {
+                Guardar jugador
+              }
+            </button>
+          </article>
+        }
+      }
+    }
+  </main>
+</div>

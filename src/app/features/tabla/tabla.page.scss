@@ -1,0 +1,114 @@
+:host {
+  display: block;
+  height: 100%;
+}
+
+.live-note {
+  max-height: 0;
+  margin-top: 0;
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  line-height: 1.35;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition:
+    max-height var(--dur-normal) var(--ease-smooth),
+    margin-top var(--dur-normal) var(--ease-smooth),
+    opacity var(--dur-normal) var(--ease-smooth),
+    transform var(--dur-normal) var(--ease-smooth);
+}
+
+.live-note.is-visible {
+  max-height: 34px;
+  margin-top: 8px;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.points-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.live-points {
+  max-height: 0;
+  overflow: hidden;
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.1;
+  opacity: 0;
+  transform: translateY(-3px);
+  white-space: nowrap;
+  transition:
+    max-height var(--dur-normal) var(--ease-smooth),
+    opacity var(--dur-normal) var(--ease-smooth),
+    transform var(--dur-normal) var(--ease-smooth);
+}
+
+.live-points.is-visible {
+  max-height: 14px;
+  opacity: 0.88;
+  transform: translateY(0);
+}
+
+.live-points.is-visible.has-points {
+  animation: live-score-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes live-score-pulse {
+  0%,
+  100% {
+    opacity: 0.82;
+    text-shadow: 0 0 0 transparent;
+  }
+
+  50% {
+    opacity: 1;
+    text-shadow: 0 0 12px var(--accent-glow);
+  }
+}
+
+.guest-section-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  margin-top: 8px;
+  padding: 12px 14px;
+  border: 1px dashed color-mix(in srgb, var(--text-tertiary) 35%, transparent);
+  border-radius: 14px;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.guest-section-chevron {
+  display: inline-block;
+  color: var(--text-tertiary);
+  font-size: 20px;
+  line-height: 1;
+  transform: rotate(90deg);
+  transition: transform var(--dur-normal) var(--ease-smooth);
+}
+
+.guest-section-chevron.is-expanded {
+  transform: rotate(-90deg);
+}
+
+.guest-section-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.guest-row {
+  opacity: 0.96;
+}

@@ -1,0 +1,257 @@
+:host {
+  display: block;
+  height: 100%;
+}
+
+.especiales-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ── Header ─────────────────────────────────────── */
+
+.especiales-header {
+  display: flex;
+  flex-shrink: 0;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--bg-border);
+  background: var(--bg-surface);
+}
+
+.back-btn {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  margin-top: 2px;
+  padding: 0;
+  border: 1px solid var(--bg-border);
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease-smooth),
+    color var(--dur-fast) var(--ease-smooth);
+}
+
+.back-btn:active {
+  background: var(--bg-border);
+  color: var(--text-primary);
+}
+
+.especiales-kicker {
+  margin: 0 0 2px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.especiales-subtitle {
+  margin: 3px 0 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+/* ── Body ────────────────────────────────────────── */
+
+.especiales-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  padding: 16px 20px 28px;
+}
+
+/* ── Closed banner ───────────────────────────────── */
+
+.closed-banner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 16px;
+  border: 1px solid var(--bg-border);
+  border-radius: var(--r-card);
+  background: var(--bg-surface);
+  text-align: center;
+}
+
+.closed-icon {
+  font-size: 28px;
+}
+
+.closed-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.closed-sub {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+/* ── Pick card ───────────────────────────────────── */
+
+.pick-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--bg-border);
+  border-radius: var(--r-card);
+  background: var(--bg-surface);
+  box-shadow: var(--sh-card);
+  transition: opacity var(--dur-fast) var(--ease-smooth);
+}
+
+.pick-card--closed {
+  opacity: 0.8;
+}
+
+.pick-card-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.pick-icon {
+  flex-shrink: 0;
+  font-size: 28px;
+  line-height: 1;
+}
+
+.pick-label {
+  margin: 0 0 3px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.pick-desc {
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.pick-current {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.pick-current strong {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.pick-empty {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  font-style: italic;
+}
+
+/* ── Select ──────────────────────────────────────── */
+
+.pick-select-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pick-select {
+  flex: 1;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--bg-border);
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease-smooth),
+    box-shadow var(--dur-fast) var(--ease-smooth);
+  appearance: auto;
+}
+
+.pick-select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.pick-select:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.pick-saving {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  font-style: italic;
+}
+
+/* ── Read-only value ─────────────────────────────── */
+
+.pick-readonly {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.pick-readonly-flag {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.pick-none {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-tertiary);
+  font-style: italic;
+}
+
+/* ── Deadline note ───────────────────────────────── */
+
+.deadline-note {
+  margin: 4px 0 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}

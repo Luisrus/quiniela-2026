@@ -1,0 +1,188 @@
+<div style="height: 100%; display: flex; flex-direction: column; overflow: hidden">
+  <div style="padding: 18px 20px 14px; flex-shrink: 0">
+    <div style="display: flex; align-items: center; justify-content: space-between">
+      <h1 style="font-size: 23px; font-weight: 800; letter-spacing: -0.02em; margin: 0">Tabla</h1>
+      
+      <div style="display: flex; background: var(--bg-surface); padding: 4px; border-radius: 8px; border: 1px solid var(--bg-border)">
+        <button 
+          (click)="viewMode.set('tabla')"
+          [style.background]="viewMode() === 'tabla' ? 'var(--bg-elevated)' : 'transparent'"
+          [style.color]="viewMode() === 'tabla' ? 'var(--text-primary)' : 'var(--text-secondary)'"
+          [style.box-shadow]="viewMode() === 'tabla' ? 'var(--sh-card)' : 'none'"
+          style="border: none; padding: 6px 12px; border-radius: 6px; font-weight: 700; font-size: 12px; cursor: pointer; transition: all 0.2s"
+        >
+          Lista
+        </button>
+        <button 
+          (click)="viewMode.set('grafica')"
+          [style.background]="viewMode() === 'grafica' ? 'var(--bg-elevated)' : 'transparent'"
+          [style.color]="viewMode() === 'grafica' ? 'var(--text-primary)' : 'var(--text-secondary)'"
+          [style.box-shadow]="viewMode() === 'grafica' ? 'var(--sh-card)' : 'none'"
+          style="border: none; padding: 6px 12px; border-radius: 6px; font-weight: 700; font-size: 12px; cursor: pointer; transition: all 0.2s"
+        >
+          Gráfica
+        </button>
+      </div>
+    </div>
+    
+    <p style="font-size: 12px; color: var(--text-secondary); margin-top: 3px">
+      Mundial 2026 · {{ playedCount() }} partidos jugados
+    </p>
+    <p class="live-note" [class.is-visible]="hasLiveMatch()">
+      Los puntos en vivo son estimados y se confirman al terminar el partido
+    </p>
+  </div>
+
+  <div style="flex: 1; overflow-y: auto; padding: 0 16px 20px; display: flex; flex-direction: column; gap: 8px">
+    @if (viewMode() === 'tabla') {
+      @if (isLoading()) {
+        @for (row of skeletonRows; track row) {
+          <app-skeleton-card />
+        }
+      } @else if (!hasAnyPlayer()) {
+        <app-empty-state emoji="📋" title="Tabla vacía" sub="Aún no hay usuarios registrados" />
+      } @else {
+        @if (titularesPlayers().length === 0) {
+          <app-empty-state
+            emoji="👥"
+            title="Sin titulares aún"
+            sub="Los invitados juegan por diversión abajo"
+          />
+        } @else {
+          @for (player of titularesPlayers(); track player.id; let i = $index) {
+            <ng-container
+              *ngTemplateOutlet="playerRow; context: rowContext(player, i + 1, 'main')"
+            />
+          }
+        }
+
+        @if (invitadosPlayers().length > 0) {
+          <button
+            type="button"
+            class="guest-section-toggle"
+            [attr.aria-expanded]="invitadosExpanded()"
+            (click)="toggleInvitadosSection()"
+          >
+            <span>🎟️ Invitados (solo por diversión)</span>
+            <span class="guest-section-chevron" [class.is-expanded]="invitadosExpanded()">›</span>
+          </button>
+
+          @if (invitadosExpanded()) {
+            <div class="guest-section-list">
+              @for (player of invitadosPlayers(); track player.id; let i = $index) {
+                <ng-container
+                  *ngTemplateOutlet="playerRow; context: rowContext(player, i + 1, 'guest')"
+                />
+              }
+            </div>
+          }
+        }
+      }
+    } @else {
+      <!-- Gráfica de Puntos -->
+      <div style="flex: 1; display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; justify-content: flex-end; align-items: center">
+          <div style="display: flex; background: var(--bg-surface); padding: 4px; border-radius: 8px; border: 1px solid var(--bg-border)">
+            <button 
+              (click)="chartFilter.set('todos')"
+              [style.background]="chartFilter() === 'todos' ? 'var(--bg-elevated)' : 'transparent'"
+              [style.color]="chartFilter() === 'todos' ? 'var(--text-primary)' : 'var(--text-secondary)'"
+              [style.box-shadow]="chartFilter() === 'todos' ? 'var(--sh-card)' : 'none'"
+              style="border: none; padding: 4px 10px; border-radius: 6px; font-weight: 700; font-size: 11px; cursor: pointer; transition: all 0.2s"
+            >
+              Todos
+            </button>
+            <button 
+              (click)="chartFilter.set('mio')"
+              [style.background]="chartFilter() === 'mio' ? 'var(--bg-elevated)' : 'transparent'"
+              [style.color]="chartFilter() === 'mio' ? 'var(--text-primary)' : 'var(--text-secondary)'"
+              [style.box-shadow]="chartFilter() === 'mio' ? 'var(--sh-card)' : 'none'"
+              style="border: none; padding: 4px 10px; border-radius: 6px; font-weight: 700; font-size: 11px; cursor: pointer; transition: all 0.2s"
+            >
+              Solo Yo
+            </button>
+          </div>
+        </div>
+
+        <div style="flex: 1; min-height: 400px; padding: 10px; border-radius: var(--r-card); background: var(--bg-surface); border: 1px solid var(--bg-border)">
+          @let data = chartData();
+          @if (data && data.labels && data.labels.length > 0) {
+            <canvas baseChart [data]="data" [options]="chartOptions" type="line"></canvas>
+          } @else {
+            <app-empty-state emoji="📈" title="Sin historial" sub="Aún no hay historial de puntos registrado" />
+          }
+        </div>
+      </div>
+    }
+  </div>
+</div>
+
+<ng-template #playerRow let-player let-position="position" let-variant="variant">
+  @let isMe = player.id === userId();
+  <div
+    [attr.class]="'card fade-up s' + (position > 10 ? 10 : position) + (variant === 'guest' ? ' guest-row' : '')"
+    [ngStyle]="rowStyle(position, isMe, variant)"
+  >
+    <div [ngStyle]="rankStyle(position, variant)">
+      {{ rankLabel(position, variant) }}
+    </div>
+
+    <app-avatar [player]="player" [size]="40" />
+
+    <div style="flex: 1; min-width: 0">
+      <div style="display: flex; align-items: center; gap: 5px; flex-wrap: wrap">
+        @if (variant === 'guest') {
+          <span aria-hidden="true" style="font-size: 14px; line-height: 1">🎟️</span>
+        }
+        <span
+          [style.font-weight]="isMe ? 700 : 600"
+          [style.font-size.px]="15"
+          [style.color]="isMe ? 'var(--accent)' : 'var(--text-primary)'"
+          style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis"
+        >
+          {{ player.name }}@if (isMe) { · tú }
+        </span>
+        <app-streak-crowns [racha]="player.streak" variant="normal" />
+        <app-streak-crowns [racha]="player.exactStreak" variant="gold" />
+      </div>
+      <div style="display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap; align-items: center">
+        @if (player.esInvitado) {
+          <app-badge variant="muted" [extraStyle]="{ 'font-size': '11px' }">Invitado</app-badge>
+        }
+        @for (badge of player.badges; track badge) {
+          <app-badge variant="muted" [extraStyle]="{ 'font-size': '11px' }">{{ badge }}</app-badge>
+        }
+        @for (medal of player.medals; track medal) {
+          <app-badge variant="gold" [extraStyle]="{ 'font-size': '11px' }">{{ medal }}</app-badge>
+        }
+        @if (player.fav) {
+          <app-team-flag name="Equipo favorito" [url]="player.fav" [size]="14" />
+        }
+      </div>
+    </div>
+
+    <div style="text-align: right; flex-shrink: 0; min-width: 72px">
+      <div class="points-stack">
+        <div
+          [class.gold-glow]="position === 1 && variant === 'main'"
+          [style.font-family]="'var(--font-score)'"
+          [style.font-size.px]="32"
+          [style.font-weight]="900"
+          [style.line-height]="1"
+          [style.color]="pointColor(position, isMe, variant)"
+        >
+          {{ player.points }}
+        </div>
+        <div
+          class="live-points"
+          [class.is-visible]="hasLiveMatch()"
+          [class.has-points]="player.liveDelta > 0"
+          title="Los puntos en vivo son estimados y se confirman al terminar el partido"
+        >
+          (+{{ player.liveDelta }} en vivo)
+        </div>
+      </div>
+      <div style="font-size: 10px; color: var(--text-tertiary); margin-top: 1px; font-weight: 600">pts</div>
+    </div>
+  </div>
+</ng-template>

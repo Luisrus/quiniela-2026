@@ -1,0 +1,19 @@
+<main class="login-page">
+  <section class="login-panel" aria-labelledby="login-title">
+    <span class="login-panel__meta">Mundial 2026</span>
+    <h1 id="login-title">Quiniela 2026</h1>
+
+    <button
+      class="google-button"
+      type="button"
+      [disabled]="auth.isLoading() || isSigningIn()"
+      (click)="signInWithGoogle()"
+    >
+      Iniciar con Google
+    </button>
+
+    @if (errorMessage(); as message) {
+      <p class="error-message" role="alert">{{ message }}</p>
+    }
+  </section>
+</main>

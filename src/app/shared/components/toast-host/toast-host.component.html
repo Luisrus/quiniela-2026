@@ -1,0 +1,14 @@
+<section class="toast-host" aria-live="polite" aria-label="Notificaciones">
+  @for (toast of toasts.toasts(); track toast.id) {
+    <button
+      type="button"
+      class="toast"
+      [class.toast-error]="toast.tone === 'error'"
+      [class.toast-info]="toast.tone === 'info'"
+      [class.toast-success]="toast.tone === 'success'"
+      (click)="toasts.dismiss(toast.id)"
+    >
+      {{ toast.message }}
+    </button>
+  }
+</section>

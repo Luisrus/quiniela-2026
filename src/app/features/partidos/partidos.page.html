@@ -1,0 +1,94 @@
+<div style="height: 100%; display: flex; flex-direction: column; overflow: hidden">
+  <div style="padding: 18px 20px 10px; display: flex; justify-content: space-between; align-items: flex-start; flex-shrink: 0">
+    <div>
+      <p style="font-size: 11px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.10em; margin-bottom: 3px; font-weight: 600">
+        FIFA World Cup 2026
+      </p>
+      <h1 style="font-size: 23px; font-weight: 800; line-height: 1.1; letter-spacing: -0.02em">Quiniela Rustrian</h1>
+    </div>
+    <div style="display: flex; align-items: center; gap: 6px; margin-top: 4px">
+      @if (live().length > 0) {
+        <div style="display: flex; align-items: center; gap: 5px; background: rgba(34,197,94,.12); padding: 4px 10px; border-radius: 20px">
+          <app-live-dot [size]="7" />
+          <span style="font-size: 11px; color: var(--live); font-weight: 700">{{ live().length }} EN VIVO</span>
+        </div>
+      }
+      @if (jornadaActiva() && tab() === 'upcoming') {
+        <button
+          id="btn-apuesta-jornada"
+          type="button"
+          (click)="apuestaSheetOpen.set(true)"
+          style="display: flex; align-items: center; gap: 5px; background: var(--bg-elevated); border: 1px solid var(--bg-border); padding: 4px 10px; border-radius: 20px; cursor: pointer; color: var(--text-secondary); font-family: var(--font-ui); font-size: 11px; font-weight: 700; transition: all var(--dur-fast)"
+        >
+          🎲 Apostar
+        </button>
+      }
+    </div>
+  </div>
+
+  @if (tab() === 'upcoming') {
+    <div
+      style="margin: 0 20px 10px; padding: 10px 12px; border-radius: 10px; background: var(--accent-muted); border: 1px solid rgba(180,240,64,0.22); flex-shrink: 0"
+    >
+      <p style="font-size: 12px; font-weight: 700; color: var(--accent); line-height: 1.4; margin: 0">
+        ⏱ {{ pronosticoCierreAviso }}
+      </p>
+    </div>
+  }
+
+  <div style="padding: 0 20px 14px; flex-shrink: 0">
+    <app-segmented-control
+      [value]="tab()"
+      [options]="segmentedOptions()"
+      (valueChange)="setTab($event)"
+    />
+  </div>
+
+  <div style="flex: 1; overflow-y: auto; padding: 2px 20px 20px; display: flex; flex-direction: column; gap: 12px">
+    @if (isLoading()) {
+      @for (row of skeletonRows; track row) {
+        <app-skeleton-card />
+      }
+    } @else if (filteredMatches().length === 0) {
+      <app-empty-state emoji="🦦" title="Nada por aquí" sub="Revisa otra pestaña, primo" />
+    } @else {
+      @for (match of filteredMatches(); track match.id; let i = $index) {
+        <app-match-card
+          [match]="match"
+          [stagger]="i + 1"
+          [prediction]="predictionFor(match.id)"
+          [frase]="fraseFor(match.id)"
+          [predictedBy]="predictedByFor(match.id)"
+          [players]="players()"
+          [saving]="isSaving(match.id)"
+          [dirty]="isDirty(match.id)"
+          [saved]="hasSavedPrediction(match.id)"
+          [canSave]="canSavePrediction(match.id)"
+          [predictionOpen]="predictionOpenFor(match.id)"
+          (predictionChange)="onPredictionChange(match.id, $event)"
+          (fraseChange)="onFraseChange(match.id, $event)"
+          (saveRequest)="savePrediction(match.id)"
+          (viewPredictions)="selectedMatch.set(match)"
+        />
+      }
+    }
+  </div>
+
+  @if (selectedMatch(); as match) {
+    <app-match-detail-sheet
+      [match]="match"
+      [userId]="userId()"
+      (close)="selectedMatch.set(null)"
+    />
+  }
+
+  @if (apuestaSheetOpen() && jornadaActiva(); as jornada) {
+    <app-apuesta-jornada-sheet
+      [jornadaKey]="jornada.key"
+      [jornadaLabel]="jornada.label"
+      [userId]="userId()"
+      [players]="playersApuesta()"
+      (close)="apuestaSheetOpen.set(false)"
+    />
+  }
+</div>

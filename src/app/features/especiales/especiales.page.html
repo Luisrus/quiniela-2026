@@ -1,0 +1,92 @@
+<div class="especiales-page">
+  <header class="especiales-header">
+    <button type="button" class="back-btn" (click)="volver()" aria-label="Volver al perfil">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" width="20" height="20" aria-hidden="true">
+        <path d="M19 12H5M12 5l-7 7 7 7" />
+      </svg>
+    </button>
+    <div>
+      <p class="especiales-kicker">Picks del torneo</p>
+      <h1>Predicciones 🔮</h1>
+      <p class="especiales-subtitle">Solo por diversión — no afectan la tabla</p>
+    </div>
+  </header>
+
+  <main class="especiales-body">
+    @if (isLoading()) {
+      @for (row of skeletonRows; track row) {
+        <app-skeleton-card />
+      }
+    } @else {
+      @if (!estaAbierto()) {
+        <div class="closed-banner">
+          <span class="closed-icon">🔒</span>
+          <p class="closed-title">El plazo cerró</p>
+          <p class="closed-sub">Ya no es posible cambiar tus picks</p>
+        </div>
+      }
+
+      @for (premio of premios; track premio.tipo) {
+        <section class="pick-card" [class.pick-card--closed]="!estaAbierto()">
+          <div class="pick-card-header">
+            <span class="pick-icon">{{ premio.emoji }}</span>
+            <div>
+              <p class="pick-label">{{ premio.titulo }}</p>
+              <p class="pick-desc">{{ premio.descripcion }}</p>
+              @if (pickActual(premio.tipo); as actual) {
+                <p class="pick-current">Tu pick: <strong>{{ actual }}</strong></p>
+              } @else if (estaAbierto()) {
+                <p class="pick-empty">Sin pick todavía</p>
+              }
+            </div>
+          </div>
+
+          @if (estaAbierto()) {
+            <div class="pick-select-wrap">
+              <select
+                [id]="'select-' + premio.tipo"
+                class="pick-select"
+                [disabled]="saving() === premio.tipo"
+                (change)="guardarPick(premio.tipo, $event)"
+                [attr.aria-label]="'Selecciona ' + premio.titulo"
+              >
+                <option value="" disabled [selected]="!pickActual(premio.tipo)">
+                  {{ esEquipo(premio.tipo) ? 'Elige un equipo…' : 'Elige un jugador…' }}
+                </option>
+                @for (opcion of opcionesFor(premio.tipo); track opcion) {
+                  <option [value]="opcion" [selected]="pickActual(premio.tipo) === opcion">
+                    {{ opcion }}
+                  </option>
+                }
+              </select>
+              @if (saving() === premio.tipo) {
+                <span class="pick-saving">Guardando…</span>
+              }
+            </div>
+          } @else if (pickActual(premio.tipo)) {
+            <div class="pick-readonly">
+              @if (esEquipo(premio.tipo)) {
+                <app-team-flag
+                  class="pick-readonly-flag"
+                  [name]="pickActual(premio.tipo) ?? ''"
+                  [url]="banderaFor(pickActual(premio.tipo))"
+                  [size]="24"
+                />
+              }
+              <span>{{ pickActual(premio.tipo) }}</span>
+            </div>
+          } @else {
+            <p class="pick-none">Sin pick.</p>
+          }
+        </section>
+      }
+
+      @if (estaAbierto()) {
+        <p class="deadline-note">
+          ⏰ Puedes cambiar tus picks hasta el inicio de los octavos de final ({{ fechaCierreLabel }}).
+        </p>
+      }
+    }
+  </main>
+</div>

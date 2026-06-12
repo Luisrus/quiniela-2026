@@ -1,0 +1,486 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function isAdmin() {
+      return signedIn() &&
+        get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.esAdmin == true;
+    }
+
+    function isText(value) {
+      return value is string && value.size() > 0;
+    }
+
+    function isNullableText(value) {
+      return value == null || value is string;
+    }
+
+    function isOptionalFrase(value) {
+      return value == null || (value is string && value.size() <= 60);
+    }
+
+    function isEquipoFavorito(value) {
+      return value == null || (value is string && value.size() > 0 && value.size() <= 50);
+    }
+
+    function isGoals(value) {
+      return (value is int || value is float) &&
+        value >= 0 &&
+        value <= 99 &&
+        value == math.floor(value);
+    }
+
+    function isNullableGoals(value) {
+      return value == null || isGoals(value);
+    }
+
+    function isPartidoEstado(value) {
+      return value == 'programado' ||
+        value == 'en_juego' ||
+        value == 'finalizado';
+    }
+
+    function isTargetTipo(value) {
+      return value == 'pronostico' || value == 'resultado';
+    }
+
+    function isPronosticoEspecialTipo(value) {
+      return value == 'campeon' ||
+        value == 'goleador' ||
+        value == 'balon_oro' ||
+        value == 'guante_oro';
+    }
+
+    function partidoPath(partidoId) {
+      return /databases/$(database)/documents/partidos/$(partidoId);
+    }
+
+    function cierrePronosticoMs() {
+      return 5 * 60 * 1000;
+    }
+
+    function partidoAbierto(partidoId) {
+      let partido = get(partidoPath(partidoId)).data;
+
+      return exists(partidoPath(partidoId)) &&
+        partido.estado == 'programado' &&
+        partido.fechaInicio is timestamp &&
+        request.time.toMillis() < partido.fechaInicio.toMillis() - cierrePronosticoMs();
+    }
+
+    function validPronosticoCreate(data) {
+      return data.keys().hasOnly([
+        'uid',
+        'partidoId',
+        'golesLocal',
+        'golesVisitante',
+        'frase'
+      ]) &&
+        data.keys().hasAll([
+          'uid',
+          'partidoId',
+          'golesLocal',
+          'golesVisitante'
+        ]) &&
+        isText(data.uid) &&
+        isText(data.partidoId) &&
+        isGoals(data.golesLocal) &&
+        isGoals(data.golesVisitante) &&
+        isOptionalFrase(data.get('frase', null));
+    }
+
+    function validPronosticoFraseField(data) {
+      return isOptionalFrase(data.get('frase', null));
+    }
+
+    function validPronosticoGoalsFields(data) {
+      return isGoals(data.golesLocal) &&
+        isGoals(data.golesVisitante);
+    }
+
+    function validPronosticoGoalsAndFraseFields(data) {
+      return validPronosticoGoalsFields(data) &&
+        validPronosticoFraseField(data);
+    }
+
+    function isRacha(value) {
+      return value is int && value >= 0;
+    }
+
+    function isOptionalRacha(value) {
+      return value == null || isRacha(value);
+    }
+
+    function isFcmToken(value) {
+      return value == null || (value is string && value.size() > 0 && value.size() <= 512);
+    }
+
+    function isUsuarioTipo(value) {
+      return value == 'titular' || value == 'invitado';
+    }
+
+    function validUsuarioBaseFields(data) {
+      return isText(data.uid) &&
+        isText(data.nombre) &&
+        isNullableText(data.fotoUrl) &&
+        data.puntos == 0 &&
+        data.badges is list &&
+        data.badges.size() == 0 &&
+        isOptionalRacha(data.get('rachaAciertos', 0)) &&
+        isOptionalRacha(data.get('rachaAciertosMaxima', 0)) &&
+        isOptionalRacha(data.get('rachaExactos', 0)) &&
+        isOptionalRacha(data.get('rachaExactosMaxima', 0));
+    }
+
+    function validUsuarioCreate(data) {
+      return data.keys().hasOnly([
+        'uid',
+        'nombre',
+        'fotoUrl',
+        'puntos',
+        'badges',
+        'tipo',
+        'rachaAciertos',
+        'rachaAciertosMaxima',
+        'rachaExactos',
+        'rachaExactosMaxima'
+      ]) &&
+        data.keys().hasAll([
+          'uid',
+          'nombre',
+          'fotoUrl',
+          'puntos',
+          'badges'
+        ]) &&
+        validUsuarioBaseFields(data) &&
+        data.get('tipo', 'invitado') == 'invitado' &&
+        isUsuarioTipo(data.get('tipo', 'invitado'));
+    }
+
+    function validUsuarioInvitadoCreate(uid, data) {
+      return data.keys().hasOnly([
+        'uid',
+        'nombre',
+        'fotoUrl',
+        'puntos',
+        'badges',
+        'tipo',
+        'rachaAciertos',
+        'rachaAciertosMaxima',
+        'rachaExactos',
+        'rachaExactosMaxima'
+      ]) &&
+        data.keys().hasAll([
+          'uid',
+          'nombre',
+          'fotoUrl',
+          'puntos',
+          'badges',
+          'tipo'
+        ]) &&
+        data.uid == uid &&
+        uid.matches('inv-.*') &&
+        data.tipo == 'invitado' &&
+        validUsuarioBaseFields(data);
+    }
+
+    function validReaccionData(data) {
+      return data.keys().hasOnly([
+        'uid',
+        'targetTipo',
+        'targetId',
+        'emoji'
+      ]) &&
+        data.keys().hasAll([
+          'uid',
+          'targetTipo',
+          'targetId',
+          'emoji'
+        ]) &&
+        isText(data.uid) &&
+        isTargetTipo(data.targetTipo) &&
+        isText(data.targetId) &&
+        isText(data.emoji) &&
+        data.emoji.size() <= 16;
+    }
+
+    match /usuarios/{uid} {
+      allow read: if signedIn();
+      allow create: if (
+        isOwner(uid) &&
+          request.resource.data.uid == request.auth.uid &&
+          validUsuarioCreate(request.resource.data)
+      ) || (
+        isAdmin() &&
+          validUsuarioInvitadoCreate(uid, request.resource.data)
+      );
+      allow update: if (
+        isOwner(uid) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'nombre',
+            'fotoUrl',
+            'equipoFavorito'
+          ]) &&
+          request.resource.data.uid == resource.data.uid &&
+          request.resource.data.puntos == resource.data.puntos &&
+          request.resource.data.badges == resource.data.badges &&
+          isText(request.resource.data.nombre) &&
+          isNullableText(request.resource.data.fotoUrl) &&
+          isEquipoFavorito(request.resource.data.get('equipoFavorito', null))
+      ) || (
+        isOwner(uid) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'equipoFavorito'
+          ]) &&
+          request.resource.data.uid == resource.data.uid &&
+          request.resource.data.puntos == resource.data.puntos &&
+          request.resource.data.badges == resource.data.badges &&
+          request.resource.data.nombre == resource.data.nombre &&
+          isEquipoFavorito(request.resource.data.equipoFavorito)
+      ) || (
+        isOwner(uid) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'fcmToken'
+          ]) &&
+          request.resource.data.uid == resource.data.uid &&
+          request.resource.data.puntos == resource.data.puntos &&
+          request.resource.data.badges == resource.data.badges &&
+          request.resource.data.nombre == resource.data.nombre &&
+          isFcmToken(request.resource.data.fcmToken)
+      ) || (
+        isAdmin() &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'puntos'
+          ]) &&
+          request.resource.data.puntos is int &&
+          request.resource.data.puntos >= 0
+      ) || (
+        isAdmin() &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'puntos',
+            'rachaAciertos',
+            'rachaAciertosMaxima',
+            'rachaExactos',
+            'rachaExactosMaxima'
+          ]) &&
+          request.resource.data.uid == resource.data.uid &&
+          request.resource.data.puntos is int &&
+          request.resource.data.puntos >= 0 &&
+          isRacha(request.resource.data.rachaAciertos) &&
+          isRacha(request.resource.data.rachaAciertosMaxima) &&
+          isRacha(request.resource.data.rachaExactos) &&
+          isRacha(request.resource.data.rachaExactosMaxima)
+      ) || (
+        isAdmin() &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'nombre',
+            'tipo'
+          ]) &&
+          request.resource.data.uid == resource.data.uid &&
+          request.resource.data.puntos == resource.data.puntos &&
+          request.resource.data.badges == resource.data.badges &&
+          isText(request.resource.data.nombre) &&
+          isUsuarioTipo(request.resource.data.tipo)
+      );
+      allow delete: if false;
+    }
+
+    match /partidos/{partidoId} {
+      allow read: if signedIn();
+      allow create: if false;
+      allow update: if isAdmin() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'golesLocal',
+          'golesVisitante',
+          'estado',
+          'puntosCalculados'
+        ]) &&
+        isNullableGoals(request.resource.data.golesLocal) &&
+        isNullableGoals(request.resource.data.golesVisitante) &&
+        isPartidoEstado(request.resource.data.estado) &&
+        request.resource.data.puntosCalculados is bool;
+      allow delete: if false;
+    }
+
+    match /pronosticos/{pronosticoId} {
+      allow read: if signedIn();
+      allow create: if (
+        signedIn() &&
+          validPronosticoCreate(request.resource.data) &&
+          request.resource.data.uid == request.auth.uid &&
+          pronosticoId == request.auth.uid + '_' + request.resource.data.partidoId &&
+          partidoAbierto(request.resource.data.partidoId)
+      ) || (
+        isAdmin() &&
+          validPronosticoCreate(request.resource.data) &&
+          pronosticoId == request.resource.data.uid + '_' + request.resource.data.partidoId
+      );
+      allow update: if (
+        isOwner(resource.data.uid) &&
+          request.resource.data.uid == resource.data.uid &&
+          request.resource.data.partidoId == resource.data.partidoId &&
+          pronosticoId == resource.data.uid + '_' + resource.data.partidoId &&
+          partidoAbierto(resource.data.partidoId) && (
+            (
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'golesLocal',
+                'golesVisitante'
+              ]) &&
+              validPronosticoGoalsFields(request.resource.data)
+            ) ||
+            (
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'frase'
+              ]) &&
+              validPronosticoFraseField(request.resource.data)
+            ) ||
+            (
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'golesLocal',
+                'golesVisitante',
+                'frase'
+              ]) &&
+              validPronosticoGoalsAndFraseFields(request.resource.data)
+            )
+          )
+      ) || (
+        isAdmin() &&
+          request.resource.data.uid == resource.data.uid &&
+          request.resource.data.partidoId == resource.data.partidoId &&
+          pronosticoId == resource.data.uid + '_' + resource.data.partidoId && (
+            (
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'golesLocal',
+                'golesVisitante'
+              ]) &&
+              validPronosticoGoalsFields(request.resource.data)
+            ) ||
+            (
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'golesLocal',
+                'golesVisitante',
+                'frase'
+              ]) &&
+              validPronosticoGoalsAndFraseFields(request.resource.data)
+            ) ||
+            (
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'puntosGanados'
+              ]) &&
+              request.resource.data.puntosGanados is int &&
+              request.resource.data.puntosGanados >= 0
+            )
+          )
+      );
+      allow delete: if false;
+    }
+
+    match /reacciones/{reaccionId} {
+      allow read: if signedIn();
+      allow create: if signedIn() &&
+        validReaccionData(request.resource.data) &&
+        request.resource.data.uid == request.auth.uid &&
+        reaccionId == request.auth.uid + '_' +
+          request.resource.data.targetTipo + '_' +
+          request.resource.data.targetId;
+      allow update: if false;
+      allow delete: if isOwner(resource.data.uid);
+    }
+
+    match /comentarios/{comentarioId} {
+      allow read: if signedIn();
+      allow create: if signedIn() &&
+        request.resource.data.keys().hasOnly([
+          'uid',
+          'partidoId',
+          'texto',
+          'creadoEn'
+        ]) &&
+        request.resource.data.keys().hasAll([
+          'uid',
+          'partidoId',
+          'texto',
+          'creadoEn'
+        ]) &&
+        request.resource.data.uid == request.auth.uid &&
+        isText(request.resource.data.partidoId) &&
+        isText(request.resource.data.texto) &&
+        request.resource.data.texto.size() <= 120 &&
+        request.resource.data.creadoEn == request.time;
+      allow update: if false;
+      allow delete: if isOwner(resource.data.uid);
+    }
+
+    match /pronosticosEspeciales/{docId} {
+      allow read: if signedIn();
+      allow create: if signedIn() &&
+        docId == request.auth.uid + '_' + request.resource.data.tipo &&
+        request.resource.data.keys().hasOnly(['uid', 'tipo', 'valor']) &&
+        request.resource.data.keys().hasAll(['uid', 'tipo', 'valor']) &&
+        request.resource.data.uid == request.auth.uid &&
+        isPronosticoEspecialTipo(request.resource.data.tipo) &&
+        isText(request.resource.data.valor) &&
+        request.resource.data.valor.size() <= 100;
+      allow update: if signedIn() &&
+        resource.data.uid == request.auth.uid &&
+        request.resource.data.uid == resource.data.uid &&
+        request.resource.data.tipo == resource.data.tipo &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['valor']) &&
+        isText(request.resource.data.valor) &&
+        request.resource.data.valor.size() <= 100;
+      allow delete: if false;
+    }
+
+    match /apuestasDia/{docId} {
+      allow read: if signedIn();
+      allow create: if signedIn() &&
+        docId == request.auth.uid + '_' + request.resource.data.jornadaKey &&
+        request.resource.data.keys().hasAll(['id', 'jornadaKey', 'retador', 'retado', 'resultado']) &&
+        request.resource.data.retador == request.auth.uid &&
+        request.resource.data.retado != request.auth.uid &&
+        request.resource.data.resultado == 'pendiente' &&
+        isText(request.resource.data.jornadaKey) &&
+        isText(request.resource.data.retado);
+      // El usuario puede cambiar solo el campo 'retado' (antes de que empiece la jornada).
+      // El script/admin puede actualizar 'resultado'.
+      allow update: if
+        (signedIn() &&
+          resource.data.retador == request.auth.uid &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['retado']) &&
+          request.resource.data.retado != request.auth.uid &&
+          isText(request.resource.data.retado))
+        ||
+        (isAdmin() &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['resultado']) &&
+          (request.resource.data.resultado == 'ganada' || request.resource.data.resultado == 'perdida'));
+      allow delete: if false;
+    }
+
+    match /config/{docId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    match /medallas/{medallaId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /recordatoriosEnviados/{recordatorioId} {
+      allow read: if false;
+      allow write: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

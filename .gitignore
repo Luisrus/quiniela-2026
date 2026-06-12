@@ -1,0 +1,19 @@
+/node_modules
+/dist
+/.angular
+/.firebase
+
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+.env
+.env.*
+!.env.example
+
+# Credenciales locales (nunca subir)
+src/environments/environment.development.ts
+tokenfootball.txt
+*firebase-adminsdk*.json
+service-account.json

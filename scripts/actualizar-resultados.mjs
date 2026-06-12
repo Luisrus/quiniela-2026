@@ -1,0 +1,1035 @@
+import { createSign } from 'node:crypto';
+
+import { calcularPuntosPronostico } from './calcular-puntos.mjs';
+import { actualizarRachas, rachasFromUsuario } from './calcular-rachas.mjs';
+import { esPronosticoTibio } from './es-pronostico-tibio.mjs';
+
+const FOOTBALL_DATA_URL = 'https://api.football-data.org/v4/competitions/WC/matches';
+const FIRESTORE_SCOPE = 'https://www.googleapis.com/auth/datastore';
+const TOKEN_URL = 'https://oauth2.googleapis.com/token';
+const DATABASE_ID = '(default)';
+const MAX_BATCH_WRITES = 450;
+
+const liveEstados = new Set(['IN_PLAY', 'PAUSED']);
+const finalEstados = new Set(['FINISHED', 'AWARDED']);
+
+const deleteField = Symbol('deleteField');
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
+
+async function main() {
+  const footballDataToken = requiredEnv('FOOTBALL_DATA_TOKEN');
+  const serviceAccount = parseServiceAccount(requiredEnv('FIREBASE_SERVICE_ACCOUNT'));
+  const accessToken = await createAccessToken(serviceAccount);
+  const firestore = createFirestoreClient(serviceAccount.project_id, accessToken);
+
+  const apiMatches = await fetchFootballDataMatches(footballDataToken);
+  const existingPartidos = await firestore.list('partidos');
+  const existingPartidosById = new Map(existingPartidos.map((doc) => [doc.id, doc.data]));
+  const partidos = apiMatches.map((match) => toPartidoDoc(match, existingPartidosById.get(String(match.id))));
+
+  await upsertPartidos(firestore, partidos);
+
+  let apuestas = [];
+  try {
+    apuestas = await firestore.list('apuestasDia');
+  } catch {
+    console.warn('No se pudieron leer apuestasDia.');
+  }
+
+  const [pronosticos, usuarios] = await Promise.all([
+    firestore.list('pronosticos'),
+    firestore.list('usuarios')
+  ]);
+
+  const pronosticosByPartido = groupBy(pronosticos, (doc) => doc.data.partidoId);
+  const livePartidos = partidos.filter((partido) => partido.estado === 'en_juego');
+  const finalizedPartidos = partidos.filter((partido) =>
+    partido.estado === 'finalizado' &&
+    existingPartidosById.get(partido.id)?.puntosCalculados !== true
+  );
+
+  await actualizarPuntosProvisionales({
+    firestore,
+    livePartidos,
+    pronosticosByPartido,
+    usuarios
+  });
+
+  for (const partido of finalizedPartidos) {
+    await cerrarPartidoFinalizado({
+      firestore,
+      partido,
+      partidos,
+      pronosticos,
+      pronosticosByPartido,
+      usuarios,
+      apuestas
+    });
+  }
+
+  console.log(JSON.stringify({
+    partidosActualizados: partidos.length,
+    partidosEnJuego: livePartidos.length,
+    partidosFinalizadosNuevos: finalizedPartidos.length
+  }));
+}
+
+function requiredEnv(name) {
+  const value = process.env[name];
+
+  if (value === undefined || value.trim() === '') {
+    throw new Error(`Falta la variable de entorno ${name}.`);
+  }
+
+  return value;
+}
+
+function parseServiceAccount(raw) {
+  const value = raw.trim();
+  const json = value.startsWith('{')
+    ? value
+    : Buffer.from(value, 'base64').toString('utf8');
+  const parsed = JSON.parse(json);
+
+  for (const field of ['client_email', 'private_key', 'project_id']) {
+    if (typeof parsed[field] !== 'string' || parsed[field].trim() === '') {
+      throw new Error(`FIREBASE_SERVICE_ACCOUNT no contiene ${field}.`);
+    }
+  }
+
+  return parsed;
+}
+
+async function createAccessToken(serviceAccount) {
+  const now = Math.floor(Date.now() / 1000);
+  const header = base64Url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
+  const payload = base64Url(JSON.stringify({
+    iss: serviceAccount.client_email,
+    scope: FIRESTORE_SCOPE,
+    aud: TOKEN_URL,
+    iat: now,
+    exp: now + 3600
+  }));
+  const unsigned = `${header}.${payload}`;
+  const signature = createSign('RSA-SHA256')
+    .update(unsigned)
+    .sign(serviceAccount.private_key);
+  const assertion = `${unsigned}.${base64Url(signature)}`;
+
+  const response = await fetch(TOKEN_URL, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+      assertion
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`No se pudo autenticar con Google: ${response.status} ${await response.text()}`);
+  }
+
+  const body = await response.json();
+
+  if (typeof body.access_token !== 'string') {
+    throw new Error('La respuesta de OAuth no incluyo access_token.');
+  }
+
+  return body.access_token;
+}
+
+function base64Url(input) {
+  const buffer = Buffer.isBuffer(input) ? input : Buffer.from(input);
+
+  return buffer
+    .toString('base64')
+    .replaceAll('+', '-')
+    .replaceAll('/', '_')
+    .replaceAll('=', '');
+}
+
+async function fetchFootballDataMatches(token) {
+  const response = await fetch(FOOTBALL_DATA_URL, {
+    headers: { 'X-Auth-Token': token }
+  });
+
+  if (!response.ok) {
+    throw new Error(`Football-Data fallo: ${response.status} ${await response.text()}`);
+  }
+
+  const payload = await response.json();
+
+  if (!Array.isArray(payload.matches)) {
+    throw new Error('Football-Data no devolvio un arreglo matches.');
+  }
+
+  return payload.matches;
+}
+
+function createFirestoreClient(projectId, accessToken) {
+  const baseUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${DATABASE_ID}`;
+
+  async function request(path, options = {}) {
+    const response = await fetch(`${baseUrl}${path}`, {
+      ...options,
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+        'content-type': 'application/json',
+        ...(options.headers ?? {})
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Firestore fallo ${response.status} ${path}: ${await response.text()}`);
+    }
+
+    if (response.status === 204) {
+      return null;
+    }
+
+    return response.json();
+  }
+
+  return {
+    nameFor(path) {
+      return `projects/${projectId}/databases/${DATABASE_ID}/documents/${path}`;
+    },
+
+    async list(collectionId) {
+      const result = [];
+      let pageToken = '';
+
+      do {
+        const qs = new URLSearchParams({ pageSize: '300' });
+        if (pageToken) {
+          qs.set('pageToken', pageToken);
+        }
+
+        const body = await request(`/documents/${collectionId}?${qs.toString()}`);
+        const documents = Array.isArray(body.documents) ? body.documents : [];
+
+        for (const document of documents) {
+          result.push(fromDocument(document));
+        }
+
+        pageToken = typeof body.nextPageToken === 'string' ? body.nextPageToken : '';
+      } while (pageToken);
+
+      return result;
+    },
+
+    async get(path, transaction = null) {
+      if (transaction === null) {
+        const body = await request(`/documents/${path}`);
+        return fromDocument(body);
+      }
+
+      const body = await request('/documents:batchGet', {
+        method: 'POST',
+        body: JSON.stringify({
+          documents: [this.nameFor(path)],
+          transaction
+        })
+      });
+      const found = body.find((entry) => entry.found)?.found;
+
+      return found === undefined ? null : fromDocument(found);
+    },
+
+    async commit(writes, transaction = null) {
+      for (const chunk of chunkArray(writes, MAX_BATCH_WRITES)) {
+        await request('/documents:commit', {
+          method: 'POST',
+          body: JSON.stringify({
+            writes: chunk,
+            ...(transaction === null ? {} : { transaction })
+          })
+        });
+      }
+    },
+
+    async beginTransaction() {
+      const body = await request('/documents:beginTransaction', {
+        method: 'POST',
+        body: JSON.stringify({ options: { readWrite: {} } })
+      });
+
+      if (typeof body.transaction !== 'string') {
+        throw new Error('Firestore no devolvio transaction.');
+      }
+
+      return body.transaction;
+    }
+  };
+}
+
+async function upsertPartidos(firestore, partidos) {
+  const writes = partidos.map((partido) =>
+    updateWrite(firestore.nameFor(`partidos/${partido.id}`), partido, Object.keys(partido))
+  );
+
+  await firestore.commit(writes);
+}
+
+async function actualizarPuntosProvisionales({
+  firestore,
+  livePartidos,
+  pronosticosByPartido,
+  usuarios
+}) {
+  const provisionalByUid = new Map();
+  const writes = [];
+
+  for (const partido of livePartidos) {
+    if (partido.golesLocal === null || partido.golesVisitante === null) {
+      continue;
+    }
+
+    const pronosticos = pronosticosByPartido.get(partido.id) ?? [];
+
+    for (const pronosticoDoc of pronosticos) {
+      const puntos = calcularPuntosPronostico(pronosticoDoc.data, partido);
+      provisionalByUid.set(
+        pronosticoDoc.data.uid,
+        (provisionalByUid.get(pronosticoDoc.data.uid) ?? 0) + puntos
+      );
+      writes.push(updateWrite(
+        firestore.nameFor(`pronosticos/${pronosticoDoc.id}`),
+        { puntosProvisionales: puntos },
+        ['puntosProvisionales']
+      ));
+    }
+  }
+
+  for (const usuario of usuarios) {
+    const definitivos = numberOrZero(usuario.data.puntos);
+    const provisionales = provisionalByUid.get(usuario.id) ?? 0;
+
+    writes.push(updateWrite(
+      firestore.nameFor(`usuarios/${usuario.id}`),
+      { puntosProvisionales: definitivos + provisionales },
+      ['puntosProvisionales']
+    ));
+  }
+
+  await firestore.commit(writes);
+}
+
+  partido,
+  partidos,
+  pronosticos,
+  pronosticosByPartido,
+  usuarios,
+  apuestas
+}) {
+  if (partido.golesLocal === null || partido.golesVisitante === null) {
+    console.warn(`Partido ${partido.id} finalizado sin marcador; se omite.`);
+    return;
+  }
+
+  const transaction = await firestore.beginTransaction();
+  const partidoActual = await firestore.get(`partidos/${partido.id}`, transaction);
+
+  if (partidoActual?.data.puntosCalculados === true) {
+    console.log(`Partido ${partido.id} ya tenia puntosCalculados=true; se omite.`);
+    return;
+  }
+
+  const writes = [];
+  const pronosticosDelPartido = pronosticosByPartido.get(partido.id) ?? [];
+  const puntosDefinitivosPorUid = new Map();
+
+  for (const pronosticoDoc of pronosticosDelPartido) {
+    const puntos = calcularPuntosPronostico(pronosticoDoc.data, partido);
+    puntosDefinitivosPorUid.set(
+      pronosticoDoc.data.uid,
+      (puntosDefinitivosPorUid.get(pronosticoDoc.data.uid) ?? 0) + puntos
+    );
+    writes.push(updateWrite(
+      firestore.nameFor(`pronosticos/${pronosticoDoc.id}`),
+      {
+        puntosGanados: puntos,
+        puntosProvisionales: deleteField
+      },
+      ['puntosGanados', 'puntosProvisionales']
+    ));
+  }
+
+  const apuestasWrites = await resolverApuestasDia({
+    firestore,
+    partido,
+    partidos,
+    pronosticos,
+    puntosDefinitivosPorUid,
+    usuarios,
+    apuestas
+  });
+  writes.push(...apuestasWrites);
+
+  const puntosUsuarios = recalcularPuntosUsuarios(pronosticos, partido.id, puntosDefinitivosPorUid, apuestas);
+  const badgesPorUsuario = calcularBadgesJornada({
+    partido,
+    partidos,
+    pronosticos,
+    usuarios,
+    puntosDefinitivosPorUid
+  });
+  const rachasPorUsuario = calcularRachasPartido({
+    pronosticosDelPartido,
+    partido,
+    usuarios
+  });
+
+  const jornadaKey = jornadaBadgeKey(partido);
+
+  for (const usuario of usuarios) {
+    const rachas = rachasPorUsuario.get(usuario.id) ?? rachasFromUsuario(usuario.data);
+    const puntosNuevos = puntosUsuarios.get(usuario.id) ?? 0;
+
+    const historialActual = Array.isArray(usuario.data.historialPuntos) ? usuario.data.historialPuntos : [];
+    const idxHistorial = historialActual.findIndex((h) => h.jornadaKey === jornadaKey);
+    const nuevoHistorial = [...historialActual];
+    
+    if (idxHistorial >= 0) {
+      nuevoHistorial[idxHistorial] = { jornadaKey, puntos: puntosNuevos };
+    } else {
+      nuevoHistorial.push({ jornadaKey, puntos: puntosNuevos });
+    }
+
+    writes.push(updateWrite(
+      firestore.nameFor(`usuarios/${usuario.id}`),
+      {
+        puntos: puntosNuevos,
+        puntosProvisionales: puntosNuevos,
+        badges: badgesPorUsuario.get(usuario.id) ?? normalizeStringArray(usuario.data.badges),
+        rachaAciertos: rachas.rachaAciertos,
+        rachaAciertosMaxima: rachas.rachaAciertosMaxima,
+        rachaExactos: rachas.rachaExactos,
+        rachaExactosMaxima: rachas.rachaExactosMaxima,
+        historialPuntos: nuevoHistorial
+      },
+      [
+        'puntos',
+        'puntosProvisionales',
+        'badges',
+        'rachaAciertos',
+        'rachaAciertosMaxima',
+        'rachaExactos',
+        'rachaExactosMaxima',
+        'historialPuntos'
+      ]
+    ));
+  }
+
+  const medallasWrites = await calcularMedallasJornada({
+    firestore,
+    partido,
+    partidos,
+    pronosticos,
+    puntosDefinitivosPorUid,
+    usuarios
+  });
+  writes.push(...medallasWrites);
+
+  writes.push(updateWrite(
+    firestore.nameFor(`partidos/${partido.id}`),
+    {
+      ...partido,
+      puntosCalculados: true
+    },
+    Object.keys(partido).concat('puntosCalculados')
+  ));
+
+  await firestore.commit(writes, transaction);
+  console.log(`Puntos definitivos calculados para partido ${partido.id}.`);
+}
+
+function recalcularPuntosUsuarios(pronosticos, partidoIdFinalizado, puntosDefinitivosPorUid, apuestas) {
+  const puntos = new Map();
+
+  for (const pronosticoDoc of pronosticos) {
+    const uid = pronosticoDoc.data.uid;
+    const valor = pronosticoDoc.data.partidoId === partidoIdFinalizado
+      ? puntosDefinitivosPorUid.get(uid)
+      : pronosticoDoc.data.puntosGanados;
+
+    puntos.set(uid, (puntos.get(uid) ?? 0) + numberOrZero(valor));
+  }
+
+  for (const apuestaDoc of apuestas) {
+    if (apuestaDoc.data.porUnPuntoReal) {
+      if (apuestaDoc.data.resultado === 'ganada') {
+        puntos.set(apuestaDoc.data.retador, (puntos.get(apuestaDoc.data.retador) ?? 0) + 1);
+        puntos.set(apuestaDoc.data.retado, (puntos.get(apuestaDoc.data.retado) ?? 0) - 1);
+      } else if (apuestaDoc.data.resultado === 'perdida') {
+        puntos.set(apuestaDoc.data.retador, (puntos.get(apuestaDoc.data.retador) ?? 0) - 1);
+        puntos.set(apuestaDoc.data.retado, (puntos.get(apuestaDoc.data.retado) ?? 0) + 1);
+      }
+    }
+  }
+
+  return puntos;
+}
+
+function calcularRachasPartido({ pronosticosDelPartido, partido, usuarios }) {
+  const rachasPorUsuario = new Map(
+    usuarios.map((usuario) => [usuario.id, rachasFromUsuario(usuario.data)])
+  );
+
+  for (const pronosticoDoc of pronosticosDelPartido) {
+    const uid = pronosticoDoc.data.uid;
+    const puntos = calcularPuntosPronostico(pronosticoDoc.data, partido);
+    const actual = rachasPorUsuario.get(uid) ?? rachasFromUsuario(undefined);
+    rachasPorUsuario.set(uid, actualizarRachas(actual, puntos));
+  }
+
+  return rachasPorUsuario;
+}
+
+function calcularBadgesJornada({
+  partido,
+  partidos,
+  pronosticos,
+  usuarios,
+  puntosDefinitivosPorUid
+}) {
+  const jornadaKey = jornadaBadgeKey(partido);
+  const partidosJornada = partidos.filter((item) =>
+    item.fase === partido.fase && String(item.jornada ?? '') === String(partido.jornada ?? '')
+  );
+  const idsJornada = new Set(partidosJornada.map((item) => item.id));
+  const puntosJornada = new Map();
+  const exactosJornada = new Map();
+
+  for (const pronosticoDoc of pronosticos) {
+    if (!idsJornada.has(pronosticoDoc.data.partidoId)) {
+      continue;
+    }
+
+    const uid = pronosticoDoc.data.uid;
+    const puntos = pronosticoDoc.data.partidoId === partido.id
+      ? puntosDefinitivosPorUid.get(uid)
+      : pronosticoDoc.data.puntosGanados;
+
+    puntosJornada.set(uid, (puntosJornada.get(uid) ?? 0) + numberOrZero(puntos));
+
+    if (puntos === 3) {
+      exactosJornada.set(uid, (exactosJornada.get(uid) ?? 0) + 1);
+    }
+  }
+
+  const maxPuntos = Math.max(0, ...puntosJornada.values());
+  const maxExactos = Math.max(0, ...exactosJornada.values());
+  const result = new Map();
+
+  for (const usuario of usuarios) {
+    const baseBadges = normalizeStringArray(usuario.data.badges)
+      .filter((badge) => !badge.includes(jornadaKey));
+    const nuevos = [];
+
+    if ((puntosJornada.get(usuario.id) ?? 0) === maxPuntos && maxPuntos > 0) {
+      nuevos.push(`🏆 ${jornadaKey}`);
+    }
+
+    if ((exactosJornada.get(usuario.id) ?? 0) === maxExactos && maxExactos > 0) {
+      nuevos.push(`🎯 ${jornadaKey}`);
+    }
+
+    result.set(usuario.id, uniqueStrings([...baseBadges, ...nuevos]));
+  }
+
+  return result;
+}
+
+/**
+ * Calcula medallas de jornada al cerrar la última fecha de grupos.
+ * Colección medallas: { jornada, tipo, uid }
+ */
+function esTitularUsuario(usuarioDoc) {
+  return usuarioDoc.data.tipo !== 'invitado';
+}
+
+function titularesUidSet(usuarios) {
+  return new Set(
+    usuarios
+      .filter((usuarioDoc) => esTitularUsuario(usuarioDoc))
+      .map((usuarioDoc) => usuarioDoc.id)
+  );
+}
+
+async function calcularMedallasJornada({
+  firestore,
+  partido,
+  partidos,
+  pronosticos,
+  puntosDefinitivosPorUid,
+  usuarios
+}) {
+  if (partido.fase !== 'grupos' || typeof partido.jornada !== 'number') {
+    return [];
+  }
+
+  const jornadaKey = `J${partido.jornada}`;
+  const partidosJornada = partidos.filter((item) =>
+    item.fase === 'grupos' && item.jornada === partido.jornada
+  );
+  const todosFinalizados = partidosJornada.every((item) =>
+    item.id === partido.id ? true : item.estado === 'finalizado'
+  );
+
+  if (!todosFinalizados) {
+    return [];
+  }
+
+  const partidosPorId = new Map(partidosJornada.map((item) => [item.id, item]));
+  const idsJornada = new Set(partidosJornada.map((item) => item.id));
+  const uidsTitulares = titularesUidSet(usuarios);
+  const exactosJornada = new Map();
+  const arriesgadoJornada = new Map();
+  const tibiosJornada = new Map();
+
+  for (const pronosticoDoc of pronosticos) {
+    if (!idsJornada.has(pronosticoDoc.data.partidoId)) {
+      continue;
+    }
+
+    const uid = pronosticoDoc.data.uid;
+
+    if (!uidsTitulares.has(uid)) {
+      continue;
+    }
+
+    const partidoPronostico = partidosPorId.get(pronosticoDoc.data.partidoId);
+
+    if (partidoPronostico === undefined) {
+      continue;
+    }
+
+    const puntos = pronosticoDoc.data.partidoId === partido.id
+      ? numberOrZero(puntosDefinitivosPorUid.get(uid))
+      : numberOrZero(pronosticoDoc.data.puntosGanados);
+
+    if (puntos === 3) {
+      exactosJornada.set(uid, (exactosJornada.get(uid) ?? 0) + 1);
+    }
+
+    if (
+      partidoPronostico.golesLocal !== null &&
+      partidoPronostico.golesVisitante !== null
+    ) {
+      const diferencia =
+        Math.abs(pronosticoDoc.data.golesLocal - partidoPronostico.golesLocal) +
+        Math.abs(pronosticoDoc.data.golesVisitante - partidoPronostico.golesVisitante);
+      const acumulado = arriesgadoJornada.get(uid) ?? { total: 0, count: 0 };
+      arriesgadoJornada.set(uid, {
+        total: acumulado.total + diferencia,
+        count: acumulado.count + 1
+      });
+    }
+
+    if (esPronosticoTibio(pronosticoDoc.data)) {
+      tibiosJornada.set(uid, (tibiosJornada.get(uid) ?? 0) + 1);
+    }
+  }
+
+  const promedioArriesgado = new Map(
+    [...arriesgadoJornada.entries()].map(([uid, valor]) => [
+      uid,
+      valor.count > 0 ? valor.total / valor.count : 0
+    ])
+  );
+
+  const medallas = [
+    { tipo: 'mas_exacto', metricas: exactosJornada },
+    { tipo: 'mas_arriesgado', metricas: promedioArriesgado },
+    { tipo: 'mas_tibio', metricas: tibiosJornada }
+  ];
+
+  const writes = [];
+  let medallasDocs;
+
+  try {
+    medallasDocs = await firestore.list('medallas');
+  } catch {
+    console.warn('No se pudieron leer medallas; se omiten medallas de jornada.');
+    return [];
+  }
+
+  for (const medallaDoc of medallasDocs) {
+    if (medallaDoc.data.jornada !== jornadaKey) {
+      continue;
+    }
+
+    writes.push(deleteWrite(firestore.nameFor(`medallas/${medallaDoc.id}`)));
+  }
+
+  for (const medalla of medallas) {
+    const ganadores = ganadoresPorMaximo(medalla.metricas);
+
+    for (const uid of ganadores) {
+      const docId = `${jornadaKey}_${medalla.tipo}_${uid}`;
+      writes.push(updateWrite(
+        firestore.nameFor(`medallas/${docId}`),
+        {
+          jornada: jornadaKey,
+          tipo: medalla.tipo,
+          uid
+        },
+        ['jornada', 'tipo', 'uid']
+      ));
+    }
+  }
+
+  return writes;
+}
+
+function ganadoresPorMaximo(metricas) {
+  const maximo = Math.max(0, ...metricas.values());
+
+  if (maximo <= 0) {
+    return [];
+  }
+
+  return [...metricas.entries()]
+    .filter(([, valor]) => valor === maximo)
+    .map(([uid]) => uid);
+}
+
+function jornadaBadgeKey(partido) {
+  const jornada = partido.jornada === null || partido.jornada === undefined
+    ? partido.fase
+    : partido.jornada;
+
+  return `J${jornada}`;
+}
+
+/**
+ * Resuelve las apuestasDia de una jornada de grupos cuando todos sus
+ * partidos han finalizado. Solo actua sobre apuestas con resultado='pendiente'.
+ * No otorga ni quita puntos — es puramente cosmético/social.
+ *
+ * @returns {Promise<object[]>} Writes de Firestore para incluir en el commit principal.
+ */
+async function resolverApuestasDia({
+  firestore,
+  partido,
+  partidos,
+  pronosticos,
+  puntosDefinitivosPorUid,
+  usuarios,
+  apuestas
+}) {
+  // Solo aplica a fase de grupos con jornada numérica.
+  if (partido.fase !== 'grupos' || typeof partido.jornada !== 'number') {
+    return [];
+  }
+
+  const jornadaKey = `J${partido.jornada}`;
+
+  // Verificar que TODOS los partidos de la jornada estén finalizados.
+  const partidosJornada = partidos.filter((p) =>
+    p.fase === 'grupos' && p.jornada === partido.jornada
+  );
+  const todosFinalizados = partidosJornada.every((p) =>
+    p.id === partido.id ? true : p.estado === 'finalizado'
+  );
+
+  if (!todosFinalizados) {
+    return [];
+  }
+
+  // Sumar puntos de jornada por usuario (incluyendo el partido que se acaba de cerrar).
+  const idsJornada = new Set(partidosJornada.map((p) => p.id));
+  const puntosJornada = new Map();
+
+  for (const pronosticoDoc of pronosticos) {
+    if (!idsJornada.has(pronosticoDoc.data.partidoId)) {
+      continue;
+    }
+
+    const uid = pronosticoDoc.data.uid;
+    const puntos = pronosticoDoc.data.partidoId === partido.id
+      ? puntosDefinitivosPorUid.get(uid)
+      : pronosticoDoc.data.puntosGanados;
+
+    puntosJornada.set(uid, (puntosJornada.get(uid) ?? 0) + numberOrZero(puntos));
+  }
+
+  const apuestasPendientes = apuestas.filter((doc) =>
+    doc.data.jornadaKey === jornadaKey && doc.data.resultado === 'pendiente'
+  );
+  const uidsTitulares = titularesUidSet(usuarios);
+  const writes = [];
+
+  for (const apuestaDoc of apuestasPendientes) {
+    const retadorEsTitular = uidsTitulares.has(apuestaDoc.data.retador);
+    const retadoEsTitular = uidsTitulares.has(apuestaDoc.data.retado);
+
+    if (!retadorEsTitular || !retadoEsTitular) {
+      continue;
+    }
+
+    const ptosRetador = puntosJornada.get(apuestaDoc.data.retador) ?? 0;
+    const ptosRetado = puntosJornada.get(apuestaDoc.data.retado) ?? 0;
+
+    let resultado = 'empatada';
+    if (ptosRetador > ptosRetado) {
+      resultado = 'ganada';
+    } else if (ptosRetador < ptosRetado) {
+      resultado = 'perdida';
+    }
+
+    apuestaDoc.data.resultado = resultado; // update in memory so it can be read by recalcularPuntosUsuarios
+
+    writes.push(updateWrite(
+      firestore.nameFor(`apuestasDia/${apuestaDoc.id}`),
+      { resultado },
+      ['resultado']
+    ));
+
+    console.log(`Apuesta ${apuestaDoc.id}: ${resultado} (retador ${ptosRetador} pts vs retado ${ptosRetado} pts).`);
+  }
+
+  return writes;
+}
+
+function toPartidoDoc(match, existing) {
+  const score = marcadorActual(match.score);
+  const estado = mapEstado(match.status);
+
+  return {
+    id: String(match.id),
+    footballDataId: match.id,
+    equipoLocal: teamName(match.homeTeam),
+    equipoVisitante: teamName(match.awayTeam),
+    banderas: {
+      local: teamFlag(match.homeTeam),
+      visitante: teamFlag(match.awayTeam)
+    },
+    fechaInicio: new Date(match.utcDate),
+    estado,
+    golesLocal: score.local,
+    golesVisitante: score.visitante,
+    fase: mapFase(match.stage),
+    jornada: match.matchday ?? match.group ?? match.stage ?? null,
+    puntosCalculados: existing?.puntosCalculados === true
+  };
+}
+
+function mapEstado(status) {
+  if (liveEstados.has(status)) {
+    return 'en_juego';
+  }
+
+  if (finalEstados.has(status)) {
+    return 'finalizado';
+  }
+
+  return 'programado';
+}
+
+function mapFase(stage) {
+  const stages = {
+    GROUP_STAGE: 'grupos',
+    LAST_32: 'dieciseisavos',
+    ROUND_OF_32: 'dieciseisavos',
+    LAST_16: 'octavos',
+    ROUND_OF_16: 'octavos',
+    QUARTER_FINALS: 'cuartos',
+    SEMI_FINALS: 'semifinales',
+    THIRD_PLACE: 'tercer_lugar',
+    FINAL: 'final'
+  };
+
+  return stages[stage] ?? 'grupos';
+}
+
+function marcadorActual(score) {
+  const candidates = [
+    score?.fullTime,
+    score?.regularTime,
+    score?.halfTime
+  ];
+
+  for (const candidate of candidates) {
+    const local = numberOrNull(candidate?.home);
+    const visitante = numberOrNull(candidate?.away);
+
+    if (local !== null && visitante !== null) {
+      return { local, visitante };
+    }
+  }
+
+  return { local: null, visitante: null };
+}
+
+function teamName(team) {
+  return team?.shortName || team?.name || team?.tla || 'Por definir';
+}
+
+function teamFlag(team) {
+  const crest = team?.crest;
+
+  if (typeof crest === 'string' && crest.startsWith('https://')) {
+    return crest;
+  }
+
+  return '';
+}
+
+function deleteWrite(name) {
+  return { delete: name };
+}
+
+function updateWrite(name, data, fieldPaths) {
+  const fields = {};
+
+  for (const [key, value] of Object.entries(data)) {
+    if (value === deleteField) {
+      continue;
+    }
+
+    fields[key] = toFirestoreValue(value);
+  }
+
+  return {
+    update: { name, fields },
+    updateMask: { fieldPaths }
+  };
+}
+
+function toFirestoreValue(value) {
+  if (value === null) {
+    return { nullValue: null };
+  }
+
+  if (value instanceof Date) {
+    return { timestampValue: value.toISOString() };
+  }
+
+  if (Array.isArray(value)) {
+    return { arrayValue: { values: value.map((item) => toFirestoreValue(item)) } };
+  }
+
+  switch (typeof value) {
+    case 'string':
+      return { stringValue: value };
+    case 'boolean':
+      return { booleanValue: value };
+    case 'number':
+      return Number.isInteger(value)
+        ? { integerValue: String(value) }
+        : { doubleValue: value };
+    case 'object': {
+      const fields = {};
+
+      for (const [key, nested] of Object.entries(value)) {
+        fields[key] = toFirestoreValue(nested);
+      }
+
+      return { mapValue: { fields } };
+    }
+    default:
+      throw new Error(`Valor no soportado para Firestore: ${String(value)}`);
+  }
+}
+
+function fromDocument(document) {
+  const parts = document.name.split('/');
+
+  return {
+    id: parts.at(-1),
+    name: document.name,
+    data: fromFields(document.fields ?? {})
+  };
+}
+
+function fromFields(fields) {
+  const result = {};
+
+  for (const [key, value] of Object.entries(fields)) {
+    result[key] = fromFirestoreValue(value);
+  }
+
+  return result;
+}
+
+function fromFirestoreValue(value) {
+  if ('nullValue' in value) {
+    return null;
+  }
+
+  if ('stringValue' in value) {
+    return value.stringValue;
+  }
+
+  if ('integerValue' in value) {
+    return Number(value.integerValue);
+  }
+
+  if ('doubleValue' in value) {
+    return Number(value.doubleValue);
+  }
+
+  if ('booleanValue' in value) {
+    return value.booleanValue;
+  }
+
+  if ('timestampValue' in value) {
+    return new Date(value.timestampValue);
+  }
+
+  if ('arrayValue' in value) {
+    return (value.arrayValue.values ?? []).map((item) => fromFirestoreValue(item));
+  }
+
+  if ('mapValue' in value) {
+    return fromFields(value.mapValue.fields ?? {});
+  }
+
+  return undefined;
+}
+
+function groupBy(items, getKey) {
+  const grouped = new Map();
+
+  for (const item of items) {
+    const key = getKey(item);
+    grouped.set(key, [...(grouped.get(key) ?? []), item]);
+  }
+
+  return grouped;
+}
+
+function chunkArray(items, size) {
+  const chunks = [];
+
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+
+  return chunks;
+}
+
+function numberOrNull(value) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function numberOrZero(value) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function normalizeStringArray(value) {
+  return Array.isArray(value)
+    ? value.filter((item) => typeof item === 'string')
+    : [];
+}
+
+function uniqueStrings(values) {
+  return [...new Set(values)];
+}
+

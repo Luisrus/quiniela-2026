@@ -1,0 +1,191 @@
+<div class="wrapped-page">
+  <header class="wrapped-header">
+    <button type="button" class="back-btn" (click)="volver()" aria-label="Volver al perfil">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" width="20" height="20" aria-hidden="true">
+        <path d="M19 12H5M12 5l-7 7 7 7" />
+      </svg>
+    </button>
+    <div>
+      <p class="wrapped-kicker">Mundial 2026</p>
+      <h1>Season Wrapped</h1>
+    </div>
+  </header>
+
+  @if (isLoading()) {
+    <main class="wrapped-loading">
+      @for (row of skeletonRows; track row) {
+        <app-skeleton-card />
+      }
+    </main>
+  } @else if (esInvitado()) {
+    <main class="wrapped-empty">
+      <app-empty-state
+        emoji="🎟️"
+        title="Solo para titulares"
+        sub="El Wrapped final es parte del ranking oficial. Los invitados juegan por diversión en su propia sección de la tabla."
+      />
+      <button type="button" class="btn-primary wrapped-back-cta" (click)="volver()">Volver al perfil</button>
+    </main>
+  } @else {
+    @if (jugadorTitular(); as jugador) {
+    <div class="wrapped-story">
+      <div class="wrapped-progress" role="tablist" aria-label="Progreso del Wrapped">
+        @for (label of slideLabels(); track label; let i = $index) {
+          <span
+            class="wrapped-progress-bar"
+            [class.wrapped-progress-bar--active]="i <= slideIndex()"
+            [class.wrapped-progress-bar--current]="i === slideIndex()"
+          ></span>
+        }
+      </div>
+
+      <div
+        class="wrapped-slide"
+        (click)="avanzar()"
+        (keyup.enter)="avanzar()"
+        tabindex="0"
+        role="region"
+        [attr.aria-label]="'Diapositiva ' + (slideIndex() + 1) + ' de ' + totalSlides()"
+      >
+        @switch (slideActual()) {
+          @case ('intro') {
+            <div class="slide slide--intro">
+              <p class="slide-emoji">⚽</p>
+              <p class="slide-kicker">Tu temporada</p>
+              <h2 class="slide-title">{{ jugador.name }}</h2>
+              <app-avatar [player]="jugador" [size]="88" />
+              <p class="slide-footnote">Toca para continuar</p>
+            </div>
+          }
+          @case ('ranking') {
+            <div class="slide slide--ranking">
+              <p class="slide-kicker">Posición final</p>
+              <p class="slide-big">#{{ jugador.position }}</p>
+              <p class="slide-sub">de {{ titularesPlayers().length }} titulares</p>
+              <div class="slide-stats">
+                <app-stat-block [value]="jugador.points" label="Puntos totales" color="var(--gold)" />
+              </div>
+            </div>
+          }
+          @case ('precision') {
+            <div class="slide slide--precision">
+              <p class="slide-kicker">Tu precisión</p>
+              <h2 class="slide-title">{{ history().length }} partidos</h2>
+              <div class="slide-stats slide-stats--row">
+                <app-stat-block [value]="exactCount()" label="Exactos" color="var(--pt-exact)" />
+                <app-stat-block [value]="correctCount()" label="Correctos" color="var(--pt-correct)" />
+                <app-stat-block [value]="missCount()" label="Fallados" color="var(--pt-miss)" />
+              </div>
+            </div>
+          }
+          @case ('rachas') {
+            <div class="slide slide--rachas">
+              <p class="slide-kicker">Tus rachas</p>
+              <div class="racha-block">
+                <span class="racha-label">Mejor racha de aciertos</span>
+                <div class="racha-value">
+                  <span class="slide-big slide-big--sm">{{ rachaMaxima() }}</span>
+                  <app-streak-crowns [racha]="rachaMaxima()" variant="normal" />
+                </div>
+              </div>
+              <div class="racha-block">
+                <span class="racha-label">Mejor racha de exactos</span>
+                <div class="racha-value">
+                  <span class="slide-big slide-big--sm" style="color: var(--gold)">{{ rachaExactosMaxima() }}</span>
+                  <app-streak-crowns [racha]="rachaExactosMaxima()" variant="gold" />
+                </div>
+              </div>
+            </div>
+          }
+          @case ('mejor') {
+            @if (mejorPartido(); as highlight) {
+              <div class="slide slide--mejor">
+                <p class="slide-kicker">Tu mejor acierto</p>
+                <p class="slide-emoji">🎯</p>
+                <div class="match-card">
+                  <div class="match-team">
+                    <app-team-flag [name]="highlight.match.home.name" [url]="highlight.match.home.flag" [size]="32" />
+                    <span>{{ highlight.match.home.name }}</span>
+                  </div>
+                  <span class="match-score">
+                    {{ highlight.pred.golesLocal }} – {{ highlight.pred.golesVisitante }}
+                  </span>
+                  <div class="match-team">
+                    <app-team-flag [name]="highlight.match.away.name" [url]="highlight.match.away.flag" [size]="32" />
+                    <span>{{ highlight.match.away.name }}</span>
+                  </div>
+                </div>
+                <p class="slide-sub">{{ highlight.match.phase }}</p>
+              </div>
+            }
+          }
+          @case ('oraculo') {
+            <div class="slide slide--oraculo">
+              <p class="slide-kicker">El oráculo</p>
+              <p class="slide-emoji">🔮</p>
+              @for (item of picksOraculo(); track item.premio.tipo) {
+                <div class="oracle-pick">
+                  <span>{{ item.premio.emoji }} {{ item.premio.titulo }}</span>
+                  @if (esEquipo(item.premio.tipo)) {
+                    <div class="oracle-team">
+                      <app-team-flag [name]="item.valor" [url]="banderaFor(item.valor)" [size]="28" />
+                      <strong>{{ item.valor }}</strong>
+                    </div>
+                  } @else {
+                    <strong>{{ item.valor }}</strong>
+                  }
+                </div>
+              }
+            </div>
+          }
+          @case ('cierre') {
+            <div class="slide slide--cierre">
+              <p class="slide-emoji">👑</p>
+              <h2 class="slide-title">Gracias por jugar</h2>
+              <p class="slide-sub">Nos vemos en el próximo mundial</p>
+              @if (jugador.badges.length > 0) {
+                <div class="badges-row">
+                  @for (badge of jugador.badges; track badge) {
+                    <span class="badge-chip">{{ badge }}</span>
+                  }
+                </div>
+              }
+              <button type="button" class="btn-primary wrapped-finish-btn" (click)="volver(); $event.stopPropagation()">
+                Volver al perfil
+              </button>
+            </div>
+          }
+        }
+      </div>
+
+      <div class="wrapped-nav">
+        <button
+          type="button"
+          class="nav-btn"
+          [disabled]="slideIndex() === 0"
+          (click)="retroceder()"
+          aria-label="Anterior"
+        >
+          ←
+        </button>
+        <span class="nav-counter">{{ slideIndex() + 1 }} / {{ totalSlides() }}</span>
+        <button
+          type="button"
+          class="nav-btn"
+          [disabled]="slideIndex() >= totalSlides() - 1"
+          (click)="avanzar()"
+          aria-label="Siguiente"
+        >
+          →
+        </button>
+      </div>
+    </div>
+    } @else {
+      <main class="wrapped-empty">
+        <app-empty-state emoji="?" title="Perfil no encontrado" sub="Tu usuario aún no está en la convocatoria" />
+        <button type="button" class="btn-primary wrapped-back-cta" (click)="volver()">Volver al perfil</button>
+      </main>
+    }
+  }
+</div>

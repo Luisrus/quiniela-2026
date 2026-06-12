@@ -1,0 +1,73 @@
+---
+description: Reglas del proyecto Quiniela Mundial 2026
+alwaysApply: true
+---
+
+# Reglas del proyecto
+
+Quiniela del Mundial 2026 para aproximadamente 10 usuarios.
+
+Stack:
+
+- Angular 18+.
+- Standalone components.
+- Signals.
+- AngularFire para Firestore/Auth.
+- Firebase Hosting.
+
+El proyecto es mobile-first: alrededor del 90% del uso esperado sera desde celular.
+
+## Reglas obligatorias
+
+- TypeScript estricto.
+- No usar `any`; crear tipos explicitos, interfaces, aliases o generics adecuados.
+- Usar standalone components.
+- No crear ni depender de `NgModule`.
+- Manejar estado con signals.
+- No introducir NgRx; el proyecto es pequeno.
+- Poner toda logica de Firestore en servicios.
+- Nunca acceder a Firestore directamente desde componentes.
+- Poner la logica de Auth en servicios o facades dedicadas.
+- Los puntos de la quiniela nunca se calculan en el cliente.
+- El cliente solo lee puntos ya calculados desde backend o Firestore.
+- No instalar dependencias sin proponerlo primero y justificar la necesidad.
+
+## Angular
+
+- Preferir APIs modernas de Angular 18+.
+- Mantener componentes enfocados en presentacion, eventos de UI y composicion.
+- Usar servicios para logica de negocio, acceso a datos y coordinacion de flujos.
+- Exponer datos desde servicios mediante APIs tipadas, signals, observables adaptados o metodos claros.
+- Evitar duplicar transformaciones entre componentes.
+
+## Firestore y Auth
+
+- Usar AngularFire.
+- Definir tipos para documentos y DTOs de Firestore.
+- Encapsular nombres de colecciones, queries y conversiones en servicios.
+- Manejar estados de carga, vacio y error explicitamente.
+- No filtrar detalles internos de Firestore hacia la capa visual si no son necesarios.
+
+## Puntaje
+
+- No agregar funciones, pipes, computed signals ni helpers de UI que calculen puntos finales.
+- Si una pantalla necesita mostrar puntos, debe leer el valor persistido.
+- Si faltan puntos, mostrar estado pendiente o no disponible.
+- Cualquier calculo de puntos debe vivir fuera del cliente.
+
+## Mobile-first
+
+- Disenar primero para pantallas pequenas.
+- Priorizar controles tactiles claros, flujos rapidos y contenido escaneable.
+- Evitar layouts que dependan de hover o de mucho espacio horizontal.
+- Validar que textos, tablas, formularios y botones funcionen en celular.
+- Usar breakpoints solo para mejorar pantallas medianas y grandes.
+
+## Iteracion y git
+
+- Hacer cambios pequenos e incrementales.
+- No generar mas de un feature por iteracion.
+- Mantener cada cambio limitado a la tarea actual.
+- No mezclar refactors grandes con features.
+- No revertir cambios del usuario sin autorizacion explicita.
+- Mantener fuera del commit cambios no relacionados.

@@ -1,0 +1,260 @@
+<div style="height: 100%; display: flex; flex-direction: column; overflow: hidden">
+  <div style="padding: 18px 20px 10px; flex-shrink: 0">
+    <h1 style="font-size: 23px; font-weight: 800; letter-spacing: 0">Resultados</h1>
+  </div>
+
+  @if (isLoading()) {
+    <div style="flex: 1; overflow-y: auto; padding: 2px 20px 20px; display: flex; flex-direction: column; gap: 12px">
+      @for (row of skeletonRows; track row) {
+        <app-skeleton-card />
+      }
+    </div>
+  } @else {
+    @if (hasPlayedMatches()) {
+      <div class="resultados-day-bar">
+        <label class="resultados-day-label" for="resultados-day-select">Día</label>
+        <select
+          id="resultados-day-select"
+          class="resultados-day-select"
+          [value]="effectiveDayKey()"
+          (change)="seleccionarDia($any($event.target).value)"
+        >
+          @for (day of dayOptions(); track day.value) {
+            @let partidosDelDia = playedCountForDay(day.value);
+            <option [value]="day.value" [selected]="effectiveDayKey() === day.value">
+              {{ day.label }} · {{ partidosDelDia }} partido{{ partidosDelDia === 1 ? '' : 's' }}
+            </option>
+          }
+        </select>
+      </div>
+    }
+
+    @if (activeMatch(); as activeMatch) {
+      <div class="resultados-swiper">
+        @for (match of swiperMatches(); track match.id) {
+          @let active = match.id === activeMatch.id;
+          <button type="button" class="resultados-swiper-chip" (click)="seleccionarPartido(match.id)" [attr.style]="matchChipStyle(match, active)">
+            <span style="display: inline-flex; align-items: center; gap: 4px">
+              <app-team-flag [name]="match.home.name" [url]="match.home.flag" [size]="16" />
+              {{ match.home.name }}
+              @if (match.score; as score) {
+                {{ score.home }}-{{ score.away }}
+              }
+              <app-team-flag [name]="match.away.name" [url]="match.away.flag" [size]="16" />
+              {{ match.away.name }}
+            </span>
+          </button>
+        }
+      </div>
+
+      <div style="margin: 0 20px; margin-bottom: 14px; flex-shrink: 0; background: var(--bg-surface); border-radius: var(--r-lg); padding: 16px 20px">
+        <div style="display: flex; justify-content: center; align-items: center; gap: 20px">
+          <div style="text-align: center; display: flex; flex-direction: column; align-items: center; gap: 5px">
+            <app-team-flag [name]="activeMatch.home.name" [url]="activeMatch.home.flag" [size]="44" />
+            <div style="font-size: 12px; font-weight: 600; color: var(--text-secondary)">{{ activeMatch.home.name }}</div>
+          </div>
+          <div style="text-align: center">
+            @if (activeMatch.score; as score) {
+              <div style="font-family: var(--font-score); font-size: 60px; font-weight: 900; line-height: 1; color: var(--text-primary); letter-spacing: 0">
+                {{ score.home }}<span style="color: var(--text-tertiary); font-size: 40px; margin: 0 4px">:</span>{{ score.away }}
+              </div>
+            }
+            <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 4px">{{ activeMatch.date }} - FINAL - {{ activeMatch.phase }}</div>
+          </div>
+          <div style="text-align: center; display: flex; flex-direction: column; align-items: center; gap: 5px">
+            <app-team-flag [name]="activeMatch.away.name" [url]="activeMatch.away.flag" [size]="44" />
+            <div style="font-size: 12px; font-weight: 600; color: var(--text-secondary)">{{ activeMatch.away.name }}</div>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 8px; margin-top: 14px; justify-content: center">
+          <button
+            type="button"
+            (click)="sheetTab.set('preds')"
+            style="padding: 6px 14px; border-radius: var(--r-full); border: 1px solid var(--bg-border); background: var(--bg-elevated); color: var(--text-secondary); font-family: var(--font-ui); font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 5px; transition: all 150ms"
+          >
+            Pronosticos
+          </button>
+          <button
+            type="button"
+            (click)="sheetTab.set('comments')"
+            style="padding: 6px 14px; border-radius: var(--r-full); border: 1px solid rgba(180,240,64,0.25); background: var(--accent-muted); color: var(--accent); font-family: var(--font-ui); font-size: 12px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 5px; transition: all 150ms"
+          >
+            Comentar
+          </button>
+        </div>
+      </div>
+
+      <div style="flex: 1; overflow-y: auto; padding: 0 20px 20px">
+
+        @if (medallasFeed().length > 0) {
+          <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px">
+            <p style="font-size: 11px; font-weight: 700; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px">Medallas de la jornada</p>
+            <div style="display: flex; gap: 6px; flex-wrap: wrap">
+              @for (item of medallasFeed(); track item.label + item.playerName) {
+                <app-badge [variant]="item.variant" [extraStyle]="{ 'font-size': '11px' }">
+                  {{ item.label }} · {{ item.playerName }}
+                </app-badge>
+              }
+            </div>
+          </div>
+        }
+
+        @if (apuestasFeed().length > 0) {
+          <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px">
+            <p style="font-size: 11px; font-weight: 700; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px">Apuestas de la jornada</p>
+            @for (item of apuestasFeed(); track item.id) {
+              <div
+                style="padding: 10px 14px; border-radius: var(--r-card); font-size: 13px; font-weight: 600; line-height: 1.4"
+                [style.background]="item.isMe ? 'var(--accent-muted)' : 'var(--bg-surface)'"
+                [style.border]="item.isMe ? '1px solid rgba(180,240,64,0.25)' : '1px solid var(--bg-border)'"
+                [style.color]="item.resultado === 'ganada' ? 'var(--accent)' : item.resultado === 'perdida' ? 'var(--live)' : 'var(--text-secondary)'"
+              >
+                {{ item.texto }}
+              </div>
+            }
+          </div>
+        }
+
+        <div style="display: flex; flex-direction: column; gap: 8px">
+          @for (result of matchResults(); track result.player.id; let i = $index) {
+            @let isMe = result.player.id === userId();
+            <div
+              [attr.class]="'card fade-up s' + (i + 1 > 10 ? 10 : i + 1)"
+              [style.padding]="'11px 14px'"
+              [style.border]="isMe ? '1px solid rgba(180,240,64,0.25)' : '1px solid transparent'"
+              [style.background]="isMe ? 'var(--accent-muted)' : 'var(--bg-surface)'"
+              [style.display]="'flex'"
+              [style.align-items]="'center'"
+              [style.gap.px]="11"
+            >
+              <app-avatar [player]="result.player" [size]="38" />
+              <div style="flex: 1; min-width: 0">
+                <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 3px">
+                  <span [style.font-weight]="isMe ? 700 : 600" [style.font-size.px]="14" [style.color]="isMe ? 'var(--accent)' : 'var(--text-primary)'">
+                    {{ result.player.name }}@if (isMe) { - tu }
+                  </span>
+                  @for (medal of medalLabelsFor(result.player.id); track medal) {
+                    <app-badge variant="gold" [extraStyle]="{ 'font-size': '10px' }">{{ medal }}</app-badge>
+                  }
+                  @if (getTag(result); as tag) {
+                    <span
+                      [style.font-size.px]="11"
+                      [style.padding]="'2px 7px'"
+                      [style.border-radius.px]="5"
+                      [style.font-weight]="600"
+                      [style.background]="tag.accent === 'gold' ? 'var(--gold-muted)' : 'var(--danger-muted)'"
+                      [style.color]="tag.accent === 'gold' ? 'var(--gold)' : 'var(--danger)'"
+                    >
+                      {{ tag.label }}
+                    </span>
+                  }
+                </div>
+                @if (result.phrase) {
+                  <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 3px; font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
+                    Dijo: "{{ result.phrase }}"
+                  </div>
+                }
+                <div style="display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-secondary); flex-wrap: wrap">
+                  <span>
+                    Predijo
+                    <span style="font-family: var(--font-score); font-size: 15px; font-weight: 700">{{ result.pred.home }}-{{ result.pred.away }}</span>
+                  </span>
+                  @if (activeMatch.score; as score) {
+                    <span style="color: var(--text-tertiary)">·</span>
+                    <span>
+                      Resultado
+                      <span style="font-family: var(--font-score); font-size: 15px; font-weight: 700; color: var(--text-primary)">{{ score.home }}-{{ score.away }}</span>
+                    </span>
+                  }
+                </div>
+              </div>
+              <div style="text-align: right; flex-shrink: 0">
+                <div [style.font-family]="'var(--font-score)'" [style.font-size.px]="30" [style.font-weight]="900" [style.line-height]="1" [style.color]="ptColor(result.pts)">
+                  {{ result.pts ?? '-' }}
+                </div>
+                <div style="font-size: 10px; color: var(--text-tertiary); font-weight: 600">pts</div>
+              </div>
+            </div>
+          }
+        </div>
+
+        <section class="resultados-interaction" [attr.data-partido-id]="activeMatch.id">
+          <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--bg-border)">
+            <p style="font-size: 12px; font-weight: 700; color: var(--text-secondary); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.06em">Comentarios</p>
+            <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 14px">
+              <input
+                type="text"
+                [value]="commentInput()"
+                (input)="onCommentInput($event)"
+                (keydown.enter)="submitComment()"
+                (focus)="commentFocused.set(true)"
+                (blur)="commentFocused.set(false)"
+                maxlength="120"
+                placeholder="Escribe un comentario..."
+                style="flex: 1; padding: 9px 14px; background: var(--bg-elevated); border: 1px solid var(--bg-border); border-radius: var(--r-full); color: var(--text-primary); font-family: var(--font-ui); font-size: 13px; outline: none"
+                [style.border-color]="commentFocused() ? 'var(--accent)' : 'var(--bg-border)'"
+              >
+              <button
+                type="button"
+                (click)="submitComment()"
+                [disabled]="!commentInput().trim()"
+                style="width: 36px; height: 36px; border-radius: 50%; border: none; background: var(--accent); color: var(--text-on-accent); cursor: pointer; font-size: 18px; flex-shrink: 0"
+                [style.opacity]="commentInput().trim() ? 1 : 0.4"
+              >
+                ↑
+              </button>
+            </div>
+            @if (matchComments().length === 0) {
+              <p style="font-size: 12px; color: var(--text-tertiary); margin-bottom: 16px">Sé el primero en comentar</p>
+            } @else {
+              <div style="margin-bottom: 16px">
+                @for (comment of matchComments(); track comment.id) {
+                  <app-comment-item
+                    [comment]="comment"
+                    [players]="players()"
+                    [userId]="userId()"
+                    [isNew]="isNewComment(comment.id)"
+                  />
+                }
+              </div>
+            }
+          </div>
+
+          <div style="margin-top: 4px; padding-top: 16px; border-top: 1px solid var(--bg-border)">
+            <p style="font-size: 12px; font-weight: 700; color: var(--text-secondary); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.06em">Reacciones</p>
+            <div class="resultados-reactions">
+              @for (reaction of reactionCounts(); track reaction.emoji) {
+                <button
+                  type="button"
+                  (click)="handleReact(reaction.emoji)"
+                  [class.active]="reaction.active"
+                  class="reaction-btn"
+                  [class.is-empty]="reaction.count === 0 && !reaction.active"
+                >
+                  <span class="reaction-emoji">{{ reaction.emoji }}</span>
+                  @if (reaction.count > 0) {
+                    <span class="reaction-count">{{ reaction.count }}</span>
+                  }
+                </button>
+              }
+            </div>
+          </div>
+        </section>
+      </div>
+
+      @if (sheetTab(); as tab) {
+        <app-match-detail-sheet
+          [match]="activeMatch"
+          [userId]="userId()"
+          [initialTab]="tab"
+          (close)="sheetTab.set(null)"
+        />
+      }
+    } @else if (!hasPlayedMatches()) {
+      <app-empty-state emoji="0-0" title="Todavia no hay finalazos" sub="Cuando alguien pite el final, aqui empieza el chisme" />
+    } @else {
+      <app-empty-state emoji="📅" title="Sin partidos este día" sub="Elige otro día en el selector de arriba" />
+    }
+  }
+</div>

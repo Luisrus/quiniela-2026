@@ -1,0 +1,72 @@
+<div style="height: 100%; display: flex; flex-direction: column; overflow: hidden">
+  <div style="padding: 18px 20px 10px; flex-shrink: 0">
+    <h1 style="font-size: 23px; font-weight: 800; letter-spacing: 0">Feed</h1>
+    <p style="font-size: 12px; color: var(--text-secondary); margin-top: 3px">Lo que dijeron antes del partido</p>
+  </div>
+
+  <div style="flex: 1; overflow-y: auto; padding: 2px 20px 20px; display: flex; flex-direction: column; gap: 10px">
+    @if (isLoading()) {
+      @for (row of skeletonRows; track row) {
+        <app-skeleton-card />
+      }
+    } @else if (feedItems().length === 0) {
+      <app-empty-state emoji="💬" title="Nadie ha dicho nada todavía" sub="Escribe una frase junto a tu pronóstico en Partidos" />
+    } @else {
+      @for (item of feedItems(); track item.result.targetId; let i = $index) {
+        @let isMe = item.result.player.id === userId();
+        <div
+          [attr.class]="'card fade-up s' + (i + 1 > 10 ? 10 : i + 1)"
+          style="padding: 14px 16px; border: 1px solid var(--bg-border)"
+          [style.background]="isMe ? 'var(--accent-muted)' : 'var(--bg-surface)'"
+          [style.border-color]="isMe ? 'rgba(180,240,64,0.25)' : 'var(--bg-border)'"
+        >
+          <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 10px; font-size: 11px; color: var(--text-tertiary)">
+            <app-team-flag [name]="item.match.home.name" [url]="item.match.home.flag" [size]="16" />
+            <span style="font-weight: 600; color: var(--text-secondary)">{{ item.match.home.name }}</span>
+            <span>vs</span>
+            <span style="font-weight: 600; color: var(--text-secondary)">{{ item.match.away.name }}</span>
+            <app-team-flag [name]="item.match.away.name" [url]="item.match.away.flag" [size]="16" />
+            <span style="margin-left: auto">{{ item.match.date }}</span>
+          </div>
+
+          <div style="display: flex; align-items: flex-start; gap: 10px; margin-bottom: 10px">
+            <app-avatar [player]="item.result.player" [size]="36" />
+            <div style="flex: 1; min-width: 0">
+              <div style="display: flex; align-items: center; gap: 5px; margin-bottom: 4px">
+                <span [style.font-weight]="isMe ? 700 : 600" [style.color]="isMe ? 'var(--accent)' : 'var(--text-primary)'" style="font-size: 14px">
+                  {{ item.result.player.name }}@if (isMe) { · tú }
+                </span>
+                @if (item.result.player.fav) {
+                  <app-team-flag [name]="item.result.player.name" [url]="item.result.player.fav" [size]="14" />
+                }
+              </div>
+              <p style="font-size: 14px; font-style: italic; color: var(--text-primary); line-height: 1.4; margin-bottom: 6px">
+                "{{ item.result.phrase }}"
+              </p>
+              <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary)">
+                <span>
+                  Predijo
+                  <span style="font-family: var(--font-score); font-size: 16px; font-weight: 700">{{ item.result.pred.home }}-{{ item.result.pred.away }}</span>
+                </span>
+                @if (item.match.score; as score) {
+                  <span style="color: var(--text-tertiary)">·</span>
+                  <span>
+                    Resultado
+                    <span style="font-family: var(--font-score); font-size: 16px; font-weight: 700; color: var(--text-primary)">{{ score.home }}-{{ score.away }}</span>
+                  </span>
+                }
+              </div>
+            </div>
+          </div>
+
+          <app-prediction-reactions
+            [emojis]="emojiSet"
+            [reactionCounts]="reactionCountsFor(item)"
+            [myReact]="myReactionFor(item)"
+            (react)="handleReact(item, $event)"
+          />
+        </div>
+      }
+    }
+  </div>
+</div>

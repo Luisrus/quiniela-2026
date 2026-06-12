@@ -1,0 +1,30 @@
+:host {
+  display: block;
+  height: 100%;
+}
+
+.app-shell {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-base);
+  max-width: 430px;
+  margin: 0 auto;
+  overflow: hidden;
+  position: relative;
+}
+
+.screen-area {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.screen-area > :not(router-outlet) {
+  flex: 1;
+  min-height: 0;
+  display: block;
+}
