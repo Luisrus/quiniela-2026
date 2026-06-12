@@ -13,7 +13,12 @@
 #   FOOTBALL_DATA_TOKEN       (token de Football-Data.org)
 #
 # Pipeline schedules (Build > Pipeline schedules):
-#   Rama main, cron */10 * * * * para actualizar resultados y recordatorios.
+#   Rama main, cron cada 10 minutos para actualizar resultados y recordatorios.
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_BRANCH == "main"
 
 stages:
   - deploy
@@ -31,7 +36,7 @@ deploy-hosting:
     - node scripts/generate-environment.mjs production
     - npm run build
     - npm install -g firebase-tools
-    - firebase deploy --only hosting,firestore:rules --token "$FIREBASE_TOKEN" --non-interactive
+    - firebase deploy --only "hosting,firestore:rules" --token "$FIREBASE_TOKEN" --non-interactive
   environment:
     name: production
     url: https://rus-quiniela.web.app
