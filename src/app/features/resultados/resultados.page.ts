@@ -3,6 +3,7 @@ import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { of, switchMap } from 'rxjs';
 
 import { clasificarPronostico } from '../../core/utils/clasificar-pronostico';
+import { equipoNombreCorto } from '../../core/config/equipos-crest.config';
 
 import { AuthService } from '../../core/services/auth.service';
 import { ApuestasDiaService } from '../../core/services/apuestas-dia.service';
@@ -22,11 +23,13 @@ import { AvatarComponent } from '../../shared/components/quiniela-ui/avatar.comp
 import { BadgeComponent } from '../../shared/components/quiniela-ui/badge.component';
 import type { BadgeVariant } from '../../shared/components/quiniela-ui/badge.component';
 import { EmptyStateComponent } from '../../shared/components/quiniela-ui/empty-state.component';
+import { LiveDotComponent } from '../../shared/components/quiniela-ui/live-dot.component';
 import { SkeletonCardComponent } from '../../shared/components/quiniela-ui/skeleton-card.component';
 import { TeamFlagComponent } from '../../shared/components/quiniela-ui/team-flag.component';
 import type {
   UiComment,
   UiMatch,
+  UiMatchStatus,
   UiPredictionResult,
   UiReactionCount,
   UiSheetTab
@@ -64,6 +67,7 @@ interface MedallaFeedItem {
     BadgeComponent,
     CommentItemComponent,
     EmptyStateComponent,
+    LiveDotComponent,
     MatchDetailSheetComponent,
     SkeletonCardComponent,
     TeamFlagComponent
@@ -106,6 +110,12 @@ export class ResultadosPage {
   protected readonly emojiSet: readonly string[] = ['🔥', '😱', '🎯', '😭', '👑', '😂', '🤡', '😤'];
   protected readonly skeletonRows: readonly number[] = [1, 2, 3];
   protected readonly userId = computed(() => this.auth.userProfile()?.uid ?? '');
+
+  private swiperPointerActive = false;
+  private swiperCaptureActive = false;
+  private swiperDragStartX = 0;
+  private swiperScrollStart = 0;
+  private swiperDidDrag = false;
 
   /**
    * Clave de jornada del partido activo. Solo grupos con jornada numérica.
@@ -173,37 +183,58 @@ export class ResultadosPage {
     )
   );
 
-  protected readonly playedByDay = computed(() => {
-    const groups = new Map<string, UiMatch[]>();
+  protected readonly matchesByDay = computed(() => {
+    const groups = new Map<string, Partido[]>();
 
-    for (const partido of finalizados(this.partidosSource())) {
+    for (const partido of this.partidosSource() ?? []) {
       const dayKey = dayKeyFromPartido(partido);
-      const match = toUiMatch(partido);
       const current = groups.get(dayKey) ?? [];
-      groups.set(dayKey, [...current, match]);
+      groups.set(dayKey, [...current, partido]);
     }
 
-    return groups;
+    const sortedGroups = new Map<string, UiMatch[]>();
+
+    for (const [dayKey, partidos] of groups) {
+      const sorted = sortPartidosByStatus(partidos);
+      sortedGroups.set(dayKey, sorted.map((partido) => toUiMatch(partido)));
+    }
+
+    return sortedGroups;
   });
 
-  protected readonly dayOptions = computed<readonly DayOption[]>(() =>
-    [...this.playedByDay().keys()]
+  protected readonly dayOptions = computed<readonly DayOption[]>(() => {
+    const today = todayDayKey();
+    const allDayKeys = [...this.matchesByDay().keys()];
+    const firstMatchDay = allDayKeys.sort((left, right) => left.localeCompare(right))[0] ?? null;
+    const dayKeys = new Set<string>();
+
+    for (const dayKey of allDayKeys) {
+      if (dayKey <= today) {
+        dayKeys.add(dayKey);
+      }
+    }
+
+    if (firstMatchDay !== null && today >= firstMatchDay) {
+      dayKeys.add(today);
+    }
+
+    return [...dayKeys]
       .sort((left, right) => right.localeCompare(left))
       .map((value) => ({
         value,
         label: dayLabel(value)
-      }))
-  );
+      }));
+  });
 
   protected readonly effectiveDayKey = computed(() =>
     resolveDayKey(this.selectedDayKey(), this.dayOptions())
   );
 
   protected readonly swiperMatches = computed(() =>
-    this.playedByDay().get(this.effectiveDayKey()) ?? []
+    this.matchesByDay().get(this.effectiveDayKey()) ?? []
   );
 
-  protected readonly hasPlayedMatches = computed(() => this.playedByDay().size > 0);
+  protected readonly hasDayOptions = computed(() => this.dayOptions().length > 0);
 
   protected readonly activeMatch = computed<UiMatch | null>(() => {
     const matches = this.swiperMatches();
@@ -337,8 +368,20 @@ export class ResultadosPage {
       }));
   });
 
-  protected playedCountForDay(dayKey: string): number {
-    return this.playedByDay().get(dayKey)?.length ?? 0;
+  protected matchCountForDay(dayKey: string): number {
+    return this.matchesByDay().get(dayKey)?.length ?? 0;
+  }
+
+  protected matchStatusLabel(match: UiMatch): string {
+    if (match.status === 'live') {
+      return 'EN VIVO';
+    }
+
+    if (match.status === 'upcoming') {
+      return 'POR JUGAR';
+    }
+
+    return 'FINAL';
   }
 
   protected seleccionarDia(dayKey: string): void {
@@ -357,21 +400,104 @@ export class ResultadosPage {
     this.resetComentarioDraft();
   }
 
-  protected matchChipStyle(match: UiMatch, active: boolean): string {
-    return [
-      'flex-shrink: 0',
-      'padding: 6px 14px',
-      'border-radius: var(--r-full)',
-      'border: none',
-      `background: ${active ? 'var(--accent)' : 'var(--bg-elevated)'}`,
-      `color: ${active ? 'var(--text-on-accent)' : 'var(--text-secondary)'}`,
-      'font-family: var(--font-ui)',
-      'font-size: 12px',
-      `font-weight: ${active ? 700 : 500}`,
-      'cursor: pointer',
-      'white-space: nowrap',
-      'transition: all var(--dur-normal)'
-    ].join('; ');
+  protected onSwiperPointerDown(event: PointerEvent): void {
+    const track = event.currentTarget;
+
+    if (!(track instanceof HTMLElement)) {
+      return;
+    }
+
+    this.swiperPointerActive = true;
+    this.swiperCaptureActive = false;
+    this.swiperDidDrag = false;
+    this.swiperDragStartX = event.clientX;
+    this.swiperScrollStart = track.scrollLeft;
+  }
+
+  protected onSwiperPointerMove(event: PointerEvent): void {
+    if (!this.swiperPointerActive) {
+      return;
+    }
+
+    const track = event.currentTarget;
+
+    if (!(track instanceof HTMLElement)) {
+      return;
+    }
+
+    const delta = event.clientX - this.swiperDragStartX;
+
+    if (!this.swiperCaptureActive && Math.abs(delta) <= 4) {
+      return;
+    }
+
+    if (!this.swiperCaptureActive) {
+      this.swiperCaptureActive = true;
+      this.swiperDidDrag = true;
+      track.setPointerCapture(event.pointerId);
+      track.classList.add('is-dragging');
+    }
+
+    track.scrollLeft = this.swiperScrollStart - delta;
+  }
+
+  protected onSwiperPointerUp(event: PointerEvent): void {
+    this.finishSwiperDrag(event);
+  }
+
+  protected onSwiperPointerCancel(event: PointerEvent): void {
+    this.finishSwiperDrag(event);
+  }
+
+  protected onSwiperChipClick(matchId: string, event: MouseEvent): void {
+    if (this.swiperDidDrag) {
+      event.preventDefault();
+      event.stopPropagation();
+      this.swiperDidDrag = false;
+      return;
+    }
+
+    this.seleccionarPartido(matchId);
+  }
+
+  private finishSwiperDrag(event: PointerEvent): void {
+    if (!this.swiperPointerActive) {
+      return;
+    }
+
+    this.swiperPointerActive = false;
+
+    const track = event.currentTarget;
+
+    if (!(track instanceof HTMLElement)) {
+      return;
+    }
+
+    if (!this.swiperCaptureActive) {
+      return;
+    }
+
+    this.swiperCaptureActive = false;
+    track.releasePointerCapture(event.pointerId);
+    track.classList.remove('is-dragging');
+  }
+
+  protected equipoCorto(nombre: string): string {
+    return equipoNombreCorto(nombre);
+  }
+
+  protected matchChipClass(match: UiMatch, active: boolean): string {
+    const classes = ['resultados-swiper-chip'];
+
+    if (active) {
+      classes.push('is-active');
+    }
+
+    if (match.status === 'live' && !active) {
+      classes.push('is-live');
+    }
+
+    return classes.join(' ');
   }
 
   protected medalLabelsFor(uid: string): readonly string[] {
@@ -500,8 +626,43 @@ function medallaVariant(tipo: MedallaTipo): BadgeVariant {
   return 'muted';
 }
 
-function finalizados(partidos: readonly Partido[] | undefined): readonly Partido[] {
-  return (partidos ?? []).filter((partido) => partido.estado === 'finalizado');
+function partidoUiStatus(partido: Partido): UiMatchStatus {
+  if (
+    partido.estado === 'en_juego' ||
+    (partido.estado === 'programado' && partido.fechaInicio.toMillis() <= Date.now())
+  ) {
+    return 'live';
+  }
+
+  if (partido.estado === 'finalizado') {
+    return 'played';
+  }
+
+  return 'upcoming';
+}
+
+function statusSortOrder(status: UiMatchStatus): number {
+  if (status === 'live') {
+    return 0;
+  }
+
+  if (status === 'upcoming') {
+    return 1;
+  }
+
+  return 2;
+}
+
+function sortPartidosByStatus(partidos: readonly Partido[]): readonly Partido[] {
+  return [...partidos].sort((left, right) => {
+    const statusDiff = statusSortOrder(partidoUiStatus(left)) - statusSortOrder(partidoUiStatus(right));
+
+    if (statusDiff !== 0) {
+      return statusDiff;
+    }
+
+    return left.fechaInicio.toMillis() - right.fechaInicio.toMillis();
+  });
 }
 
 function dayKeyFromPartido(partido: Partido): string {

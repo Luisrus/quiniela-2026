@@ -25,7 +25,7 @@ export const routes: Routes = [
         path: 'partidos',
         loadComponent: () =>
           import('./features/partidos/partidos.page').then((module) => module.PartidosPage),
-        title: 'Partidos'
+        title: 'Pronósticos'
       },
       {
         path: 'tabla',

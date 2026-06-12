@@ -10,7 +10,7 @@
         <app-skeleton-card />
       }
     } @else if (feedItems().length === 0) {
-      <app-empty-state emoji="💬" title="Nadie ha dicho nada todavía" sub="Escribe una frase junto a tu pronóstico en Partidos" />
+      <app-empty-state emoji="💬" title="Nadie ha dicho nada todavía" sub="Escribe una frase junto a tu pronóstico en Pronósticos" />
     } @else {
       @for (item of feedItems(); track item.result.targetId; let i = $index) {
         @let isMe = item.result.player.id === userId();

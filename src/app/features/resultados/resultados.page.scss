@@ -32,23 +32,95 @@
   font-weight: 600;
 }
 
-.resultados-swiper {
-  display: flex;
-  gap: 8px;
+.resultados-swiper-track {
   padding: 0 20px 14px;
   overflow-x: auto;
   flex-shrink: 0;
-  scroll-snap-type: x mandatory;
+  scroll-snap-type: x proximity;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
+  cursor: grab;
+  touch-action: pan-x;
+  overscroll-behavior-x: contain;
+  user-select: none;
 }
 
-.resultados-swiper::-webkit-scrollbar {
+.resultados-swiper-track.is-dragging {
+  cursor: grabbing;
+  scroll-snap-type: none;
+}
+
+.resultados-swiper-track::-webkit-scrollbar {
   display: none;
 }
 
+.resultados-swiper {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  width: max-content;
+  min-width: 100%;
+  margin-inline: auto;
+  padding-inline: 2px;
+}
+
 .resultados-swiper-chip {
-  scroll-snap-align: start;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  border-radius: var(--r-full);
+  border: 1px solid transparent;
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--dur-normal), color var(--dur-normal), border-color var(--dur-normal);
+  scroll-snap-align: center;
+  letter-spacing: 0.02em;
+  touch-action: pan-x;
+  user-select: none;
+}
+
+.resultados-swiper-chip.is-active {
+  background: var(--accent);
+  color: var(--text-on-accent);
+  font-weight: 700;
+  border-color: transparent;
+}
+
+.resultados-swiper-chip.is-live {
+  border-color: rgba(34, 197, 94, 0.35);
+  background: rgba(34, 197, 94, 0.1);
+}
+
+.resultados-swiper-chip-content {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.resultados-match-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.resultados-status-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--live);
+  font-weight: 700;
+  letter-spacing: 0.06em;
 }
 
 .resultados-reactions {

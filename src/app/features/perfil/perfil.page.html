@@ -167,7 +167,7 @@
         <h3 style="font-size: 15px; font-weight: 700; margin-bottom: 12px; color: var(--text-primary)">Mis pronosticos</h3>
 
         @if (history().length === 0) {
-          <app-empty-state emoji="0-0" title="Aun no tienes pronosticos" sub="Ve a Partidos y lanza tus predicciones" />
+          <app-empty-state emoji="0-0" title="Aun no tienes pronosticos" sub="Ve a Pronósticos y lanza tus predicciones" />
         } @else {
           <div style="display: flex; flex-direction: column; gap: 8px">
             @for (item of history(); track item.match.id; let i = $index) {

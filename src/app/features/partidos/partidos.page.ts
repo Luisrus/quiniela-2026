@@ -61,7 +61,7 @@ export class PartidosPage {
     initialValue: undefined
   });
 
-  protected readonly tab = signal<MatchTab>('live');
+  protected readonly tab = signal<MatchTab>('upcoming');
   protected readonly selectedMatch = signal<UiMatch | null>(null);
   protected readonly apuestaSheetOpen = signal(false);
   private readonly draftPredictions = signal<Record<string, UiPrediction>>({});
@@ -114,8 +114,8 @@ export class PartidosPage {
   });
 
   protected readonly segmentedOptions = computed<readonly SegmentedControlOption[]>(() => [
+    { value: 'upcoming', label: 'A pronosticar', count: this.upcoming().length },
     { value: 'live', label: 'En Vivo', live: true, count: this.live().length },
-    { value: 'upcoming', label: 'Próximos', count: this.upcoming().length },
     { value: 'played', label: 'Jugados', count: this.played().length }
   ]);
 

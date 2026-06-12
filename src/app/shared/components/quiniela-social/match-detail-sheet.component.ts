@@ -76,7 +76,7 @@ import { PredRowComponent, type PredictionReactionEvent } from './pred-row.compo
       @if (tab() === 'preds') {
         <div style="flex: 1; overflow-y: auto; padding: 4px 20px 24px">
           @if (matchPreds.length === 0) {
-            <app-empty-state emoji="🦗" title="Nadie ha pronosticado aún" sub="Sé el primero en la pestaña de Partidos" />
+            <app-empty-state emoji="🦗" title="Nadie ha pronosticado aún" sub="Sé el primero en la pestaña A pronosticar" />
           } @else {
             @for (result of matchPreds; track result.player.id) {
               <app-pred-row

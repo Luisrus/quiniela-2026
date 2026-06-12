@@ -81,7 +81,7 @@ interface BottomNavItem {
 })
 export class BottomNavComponent {
   protected readonly tabs: readonly BottomNavItem[] = [
-    { id: 'partidos', label: 'Partidos', route: '/partidos', icon: 'partidos' },
+    { id: 'partidos', label: 'Pronósticos', route: '/partidos', icon: 'partidos' },
     { id: 'tabla', label: 'Tabla', route: '/tabla', icon: 'tabla' },
     { id: 'feed', label: 'Feed', route: '/feed', icon: 'feed' },
     { id: 'resultados', label: 'Resultados', route: '/resultados', icon: 'resultados' },

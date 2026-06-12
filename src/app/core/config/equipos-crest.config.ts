@@ -180,11 +180,7 @@ function isCrestUrl(value: string): boolean {
   return value.startsWith('https://');
 }
 
-export function resolveCrestUrl(nombreEquipo: string, urlAlmacenada?: string | null): string {
-  if (urlAlmacenada !== undefined && urlAlmacenada !== null && isCrestUrl(urlAlmacenada)) {
-    return urlAlmacenada;
-  }
-
+function crestUrlForNombre(nombreEquipo: string): string {
   const nombre = nombreEquipo.trim();
 
   if (!nombre) {
@@ -211,4 +207,52 @@ export function resolveCrestUrl(nombreEquipo: string, urlAlmacenada?: string | n
   }
 
   return '';
+}
+
+function codigoCortoPorCrest(url: string): string | null {
+  const entry = Object.entries(CREST_BY_KEY).find(
+    ([key, crestUrl]) =>
+      crestUrl === url && key.length === 3 && key === key.toUpperCase()
+  );
+
+  return entry?.[0] ?? null;
+}
+
+/** Etiqueta compacta para chips y espacios estrechos (p. ej. MEX, KOR, RSA). */
+export function equipoNombreCorto(nombreEquipo: string): string {
+  const nombre = nombreEquipo.trim();
+
+  if (!nombre) {
+    return '';
+  }
+
+  const crestUrl = crestUrlForNombre(nombre);
+
+  if (crestUrl !== '') {
+    const codigo = codigoCortoPorCrest(crestUrl);
+
+    if (codigo !== null) {
+      return codigo;
+    }
+  }
+
+  if (nombre.length <= 10) {
+    return nombre;
+  }
+
+  const primeraPalabra = nombre.split(/\s+/)[0] ?? nombre;
+
+  if (primeraPalabra.length <= 10) {
+    return primeraPalabra;
+  }
+
+  return `${primeraPalabra.slice(0, 9)}…`;
+}
+
+export function resolveCrestUrl(nombreEquipo: string, urlAlmacenada?: string | null): string {
+  if (urlAlmacenada !== undefined && urlAlmacenada !== null && isCrestUrl(urlAlmacenada)) {
+    return urlAlmacenada;
+  }
+
+  return crestUrlForNombre(nombreEquipo);
 }

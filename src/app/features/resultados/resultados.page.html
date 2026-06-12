@@ -10,7 +10,7 @@
       }
     </div>
   } @else {
-    @if (hasPlayedMatches()) {
+    @if (hasDayOptions()) {
       <div class="resultados-day-bar">
         <label class="resultados-day-label" for="resultados-day-select">Día</label>
         <select
@@ -20,7 +20,7 @@
           (change)="seleccionarDia($any($event.target).value)"
         >
           @for (day of dayOptions(); track day.value) {
-            @let partidosDelDia = playedCountForDay(day.value);
+            @let partidosDelDia = matchCountForDay(day.value);
             <option [value]="day.value" [selected]="effectiveDayKey() === day.value">
               {{ day.label }} · {{ partidosDelDia }} partido{{ partidosDelDia === 1 ? '' : 's' }}
             </option>
@@ -30,21 +30,38 @@
     }
 
     @if (activeMatch(); as activeMatch) {
-      <div class="resultados-swiper">
-        @for (match of swiperMatches(); track match.id) {
-          @let active = match.id === activeMatch.id;
-          <button type="button" class="resultados-swiper-chip" (click)="seleccionarPartido(match.id)" [attr.style]="matchChipStyle(match, active)">
-            <span style="display: inline-flex; align-items: center; gap: 4px">
-              <app-team-flag [name]="match.home.name" [url]="match.home.flag" [size]="16" />
-              {{ match.home.name }}
-              @if (match.score; as score) {
-                {{ score.home }}-{{ score.away }}
-              }
-              <app-team-flag [name]="match.away.name" [url]="match.away.flag" [size]="16" />
-              {{ match.away.name }}
-            </span>
-          </button>
-        }
+      <div
+        class="resultados-swiper-track"
+        (pointerdown)="onSwiperPointerDown($event)"
+        (pointermove)="onSwiperPointerMove($event)"
+        (pointerup)="onSwiperPointerUp($event)"
+        (pointercancel)="onSwiperPointerCancel($event)"
+      >
+        <div class="resultados-swiper">
+          @for (match of swiperMatches(); track match.id) {
+            @let active = match.id === activeMatch.id;
+            <button
+              type="button"
+              [class]="matchChipClass(match, active)"
+              (click)="onSwiperChipClick(match.id, $event)"
+            >
+              <span class="resultados-swiper-chip-content">
+                @if (match.status === 'live') {
+                  <app-live-dot [size]="6" />
+                }
+                <app-team-flag [name]="match.home.name" [url]="match.home.flag" [size]="16" />
+                {{ equipoCorto(match.home.name) }}
+                @if (match.score; as score) {
+                  {{ score.home }}-{{ score.away }}
+                } @else {
+                  vs
+                }
+                <app-team-flag [name]="match.away.name" [url]="match.away.flag" [size]="16" />
+                {{ equipoCorto(match.away.name) }}
+              </span>
+            </button>
+          }
+        </div>
       </div>
 
       <div style="margin: 0 20px; margin-bottom: 14px; flex-shrink: 0; background: var(--bg-surface); border-radius: var(--r-lg); padding: 16px 20px">
@@ -58,8 +75,30 @@
               <div style="font-family: var(--font-score); font-size: 60px; font-weight: 900; line-height: 1; color: var(--text-primary); letter-spacing: 0">
                 {{ score.home }}<span style="color: var(--text-tertiary); font-size: 40px; margin: 0 4px">:</span>{{ score.away }}
               </div>
+            } @else {
+              <div style="font-family: var(--font-score); font-size: 40px; font-weight: 900; line-height: 1; color: var(--text-tertiary); letter-spacing: 0.08em">
+                - : -
+              </div>
             }
-            <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 4px">{{ activeMatch.date }} - FINAL - {{ activeMatch.phase }}</div>
+            <div class="resultados-match-status">
+              <span style="font-size: 11px; color: var(--text-tertiary)">{{ activeMatch.date }}</span>
+              <span style="font-size: 11px; color: var(--text-tertiary)">·</span>
+              @if (activeMatch.status === 'live') {
+                <span class="resultados-status-live">
+                  <app-live-dot [size]="6" />
+                  EN VIVO
+                </span>
+              } @else {
+                <span
+                  style="font-size: 11px; font-weight: 700; letter-spacing: 0.06em"
+                  [style.color]="activeMatch.status === 'upcoming' ? 'var(--text-secondary)' : 'var(--text-tertiary)'"
+                >
+                  {{ matchStatusLabel(activeMatch) }}
+                </span>
+              }
+              <span style="font-size: 11px; color: var(--text-tertiary)">·</span>
+              <span style="font-size: 11px; color: var(--text-tertiary)">{{ activeMatch.phase }}</span>
+            </div>
           </div>
           <div style="text-align: center; display: flex; flex-direction: column; align-items: center; gap: 5px">
             <app-team-flag [name]="activeMatch.away.name" [url]="activeMatch.away.flag" [size]="44" />
@@ -251,10 +290,10 @@
           (close)="sheetTab.set(null)"
         />
       }
-    } @else if (!hasPlayedMatches()) {
-      <app-empty-state emoji="0-0" title="Todavia no hay finalazos" sub="Cuando alguien pite el final, aqui empieza el chisme" />
+    } @else if (!hasDayOptions()) {
+      <app-empty-state emoji="🏟️" title="El torneo aun no empieza" sub="Cuando arranque el Mundial, aqui veras los partidos del dia" />
     } @else {
-      <app-empty-state emoji="📅" title="Sin partidos este día" sub="Elige otro día en el selector de arriba" />
+      <app-empty-state emoji="📅" title="Sin partidos este dia" sub="Elige otro dia en el selector de arriba" />
     }
   }
 </div>
