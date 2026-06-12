@@ -279,7 +279,7 @@
           Si el partido ya finalizó, al guardar el pronóstico se recalculan los puntos automáticamente.
         </p>
       }
-    } @else {
+    } @else if (activeTab() === 'jugadores') {
       <div class="admin-card admin-invite-form">
         <p class="field-label">Agregar invitado</p>
         <p class="admin-hint">Para jugadores que vienen de otra app y no tienen login de Google.</p>
@@ -367,6 +367,73 @@
             </button>
           </article>
         }
+      }
+    } @else if (activeTab() === 'torneos') {
+      <div class="admin-card admin-invite-form">
+        <p class="field-label">Crear nueva Quiniela Libre</p>
+        <p class="admin-hint">Inicia a partir de una fase específica. Puntos desde esa fase en adelante.</p>
+        
+        <input
+          type="text"
+          class="text-input"
+          placeholder="Nombre (ej. Torneo de Primos)"
+          [value]="nuevoTorneoNombre()"
+          (input)="nuevoTorneoNombre.set($any($event.target).value)"
+          style="margin-bottom: 12px;"
+        />
+        
+        <select
+          class="status-select full-width"
+          [value]="nuevoTorneoFase()"
+          (change)="nuevoTorneoFase.set($any($event.target).value)"
+          style="margin-bottom: 12px;"
+        >
+          @for (fase of fases; track fase) {
+            <option [value]="fase">Desde: {{ fase }}</option>
+          }
+        </select>
+
+        <button
+          type="button"
+          class="save-button"
+          [disabled]="creandoTorneo() || nuevoTorneoNombre().trim() === ''"
+          (click)="crearTorneo()"
+        >
+          {{ creandoTorneo() ? 'Creando...' : 'Crear Torneo' }}
+        </button>
+      </div>
+
+      @for (torneo of torneos(); track torneo.id) {
+        <article class="admin-card">
+          <div class="admin-card-top" style="margin-bottom: 12px;">
+            <div>
+              <p class="player-name">{{ torneo.nombre }}</p>
+              <p class="player-meta">Inicia en: {{ torneo.faseInicio }}</p>
+            </div>
+            <button
+              class="tipo-badge"
+              [style.cursor]="'pointer'"
+              [attr.data-tipo]="torneo.estado === 'abierto' ? 'titular' : 'invitado'"
+              (click)="toggleTorneoEstado(torneo)"
+            >
+              {{ torneo.estado | uppercase }}
+            </button>
+          </div>
+
+          <p class="field-label" style="margin-bottom: 8px;">Participantes</p>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            @for (jugador of jugadores(); track jugador.uid) {
+              <label style="display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer;">
+                <input
+                  type="checkbox"
+                  [checked]="torneo.participantes.includes(jugador.uid)"
+                  (change)="toggleParticipante(torneo, jugador.uid)"
+                />
+                <span>{{ jugador.nombre }}</span>
+              </label>
+            }
+          </div>
+        </article>
       }
     }
   </main>

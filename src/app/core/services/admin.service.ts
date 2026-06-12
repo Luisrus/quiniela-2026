@@ -16,7 +16,8 @@ import {
 
 import type { AdminJugadorUpdate, AdminPronosticoInput } from '../models/admin.model';
 import { buildPronosticoId } from '../models/pronostico.model';
-import type { Partido, PartidoEstado } from '../models/partido.model';
+import { partidoFases, type Partido, type PartidoEstado } from '../models/partido.model';
+import type { Torneo } from '../models/torneo.model';
 import type { Usuario, UsuarioTipo } from '../models/usuario.model';
 import { actualizarRachas, rachasFromUsuario } from '../utils/calcular-rachas';
 import { calcularPuntosPronostico } from '../utils/calcular-puntos';
@@ -175,14 +176,19 @@ export class AdminService {
       this.pronosticosCollection,
       where('partidoId', '==', input.partidoId)
     );
+    const torneosCollection = collection(this.firestore, 'torneos') as CollectionReference<Torneo>;
     const [
       pronosticosDelPartidoSnapshot,
       pronosticosSnapshot,
-      usuariosSnapshot
+      usuariosSnapshot,
+      partidosSnapshot,
+      torneosSnapshot
     ] = await Promise.all([
       getDocs(pronosticosDelPartidoQuery),
       getDocs(this.pronosticosCollection),
-      getDocs(this.usuariosCollection)
+      getDocs(this.usuariosCollection),
+      getDocs(this.partidosCollection),
+      getDocs(torneosCollection)
     ]);
     const pronosticoRefsParaActualizar = new Set(
       pronosticosDelPartidoSnapshot.docs.map((snapshot) => snapshot.ref.path)
@@ -190,6 +196,13 @@ export class AdminService {
     const pronosticoRefs = pronosticosSnapshot.docs.map((snapshot) => snapshot.ref);
     const usuarioRefs = usuariosSnapshot.docs.map((snapshot) => snapshot.ref);
     const partidoRef = this.partidoRef(input.partidoId);
+
+    const partidoFaseMap = new Map<string, number>();
+    partidosSnapshot.forEach(doc => {
+      const p = doc.data();
+      partidoFaseMap.set(p.id, partidoFases.indexOf(p.fase));
+    });
+    const torneos = torneosSnapshot.docs.map(doc => doc.data());
 
     await runTransaction(this.firestore, async (transaction) => {
       const partidoSnapshot = await transaction.get(partidoRef);
@@ -206,6 +219,7 @@ export class AdminService {
       );
 
       const puntosPorUsuario = new Map<string, number>();
+      const puntosPorTorneoPorUsuario = new Map<string, Record<string, number>>();
       const puntosPartidoPorUid = new Map<string, number>();
 
       for (const pronosticoSnapshot of pronosticoSnapshots) {
@@ -223,6 +237,20 @@ export class AdminService {
           pronostico.uid,
           (puntosPorUsuario.get(pronostico.uid) ?? 0) + puntos
         );
+
+        const pronosticoFaseIndex = partidoFaseMap.get(pronostico.partidoId) ?? -1;
+        let pt = puntosPorTorneoPorUsuario.get(pronostico.uid);
+        if (!pt) {
+          pt = {};
+          puntosPorTorneoPorUsuario.set(pronostico.uid, pt);
+        }
+
+        for (const torneo of torneos) {
+          const torneoFaseIndex = partidoFases.indexOf(torneo.faseInicio);
+          if (pronosticoFaseIndex >= torneoFaseIndex && torneo.participantes.includes(pronostico.uid)) {
+            pt[torneo.id] = (pt[torneo.id] ?? 0) + puntos;
+          }
+        }
 
         if (esPronosticoDelPartido) {
           puntosPartidoPorUid.set(pronostico.uid, puntos);
@@ -246,6 +274,7 @@ export class AdminService {
 
         transaction.update(usuarioSnapshot.ref, {
           puntos: puntosPorUsuario.get(usuario.uid) ?? 0,
+          puntosPorTorneo: puntosPorTorneoPorUsuario.get(usuario.uid) ?? {},
           rachaAciertos: rachas.rachaAciertos,
           rachaAciertosMaxima: rachas.rachaAciertosMaxima,
           rachaExactos: rachas.rachaExactos,

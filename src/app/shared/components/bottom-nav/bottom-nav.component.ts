@@ -14,7 +14,7 @@ interface BottomNavItem {
   imports: [RouterLink, RouterLinkActive],
   template: `
     <nav
-      style="height: var(--nav-height); background: var(--bg-surface); border-top: 1px solid var(--bg-border); display: flex; align-items: center; padding-bottom: env(safe-area-inset-bottom, 0px); flex-shrink: 0"
+      style="height: var(--nav-height); background: var(--bg-surface); display: flex; align-items: center; padding-bottom: env(safe-area-inset-bottom, 0px); flex-shrink: 0"
     >
       @for (tab of tabs; track tab.id) {
         <a

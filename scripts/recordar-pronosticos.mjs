@@ -16,6 +16,8 @@
  */
 import { createSign } from 'node:crypto';
 
+import { loadProjectEnv, readFirebaseServiceAccountRaw } from './project-env.mjs';
+
 const FIRESTORE_SCOPE = 'https://www.googleapis.com/auth/datastore';
 const MESSAGING_SCOPE = 'https://www.googleapis.com/auth/firebase.messaging';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -30,7 +32,8 @@ main().catch((error) => {
 });
 
 async function main() {
-  const serviceAccount = parseServiceAccount(requiredEnv('FIREBASE_SERVICE_ACCOUNT'));
+  loadProjectEnv();
+  const serviceAccount = parseServiceAccount(readFirebaseServiceAccountRaw());
   const accessToken = await createAccessToken(serviceAccount);
   const firestore = createFirestoreClient(serviceAccount.project_id, accessToken);
 

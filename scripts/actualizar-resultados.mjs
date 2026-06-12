@@ -3,6 +3,7 @@ import { createSign } from 'node:crypto';
 import { calcularPuntosPronostico } from './calcular-puntos.mjs';
 import { actualizarRachas, rachasFromUsuario } from './calcular-rachas.mjs';
 import { esPronosticoTibio } from './es-pronostico-tibio.mjs';
+import { loadProjectEnv, readFirebaseServiceAccountRaw } from './project-env.mjs';
 
 const FOOTBALL_DATA_URL = 'https://api.football-data.org/v4/competitions/WC/matches';
 const FIRESTORE_SCOPE = 'https://www.googleapis.com/auth/datastore';
@@ -10,7 +11,7 @@ const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const DATABASE_ID = '(default)';
 const MAX_BATCH_WRITES = 450;
 
-const liveEstados = new Set(['IN_PLAY', 'PAUSED']);
+const liveEstados = new Set(['IN_PLAY', 'PAUSED', 'EXTRA_TIME', 'PENALTY_SHOOTOUT', 'LIVE']);
 const finalEstados = new Set(['FINISHED', 'AWARDED']);
 
 const deleteField = Symbol('deleteField');
@@ -21,8 +22,9 @@ main().catch((error) => {
 });
 
 async function main() {
+  loadProjectEnv();
   const footballDataToken = requiredEnv('FOOTBALL_DATA_TOKEN');
-  const serviceAccount = parseServiceAccount(requiredEnv('FIREBASE_SERVICE_ACCOUNT'));
+  const serviceAccount = parseServiceAccount(readFirebaseServiceAccountRaw());
   const accessToken = await createAccessToken(serviceAccount);
   const firestore = createFirestoreClient(serviceAccount.project_id, accessToken);
 
@@ -319,6 +321,8 @@ async function actualizarPuntosProvisionales({
   await firestore.commit(writes);
 }
 
+async function cerrarPartidoFinalizado({
+  firestore,
   partido,
   partidos,
   pronosticos,

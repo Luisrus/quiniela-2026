@@ -164,7 +164,10 @@ export class MatchCardComponent {
   }
 
   get visibleScore(): UiMatchScore | null {
-    return this.isLive || this.isPlayed ? this.match.score : null;
+    if (this.isLive || this.isPlayed) {
+      return this.match.score ?? { home: 0, away: 0 };
+    }
+    return null;
   }
 
   get isLive(): boolean {

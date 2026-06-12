@@ -9,8 +9,11 @@ export interface Usuario {
   readonly tipo?: UsuarioTipo;
   readonly equipoFavorito?: string | null;
   readonly puntos: number;
+  readonly puntosPorTorneo?: Record<string, number>;
   readonly puntosProvisionales?: number;
+  readonly puntosProvisionalesPorTorneo?: Record<string, number>;
   readonly historialPuntos?: readonly { jornadaKey: string; puntos: number }[];
+  readonly historialPuntosPorTorneo?: Record<string, readonly { jornadaKey: string; puntos: number }[]>;
   readonly badges: readonly string[];
   readonly rachaAciertos?: number;
   readonly rachaAciertosMaxima?: number;

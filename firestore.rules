@@ -127,6 +127,40 @@ service cloud.firestore {
       return value == 'titular' || value == 'invitado';
     }
 
+    function isPartidoFase(value) {
+      return value == 'grupos' ||
+        value == 'dieciseisavos' ||
+        value == 'octavos' ||
+        value == 'cuartos' ||
+        value == 'semifinales' ||
+        value == 'tercer_lugar' ||
+        value == 'final';
+    }
+
+    function isTorneoEstado(value) {
+      return value == 'abierto' || value == 'cerrado';
+    }
+
+    function validTorneoCreate(data) {
+      return data.keys().hasAll([
+        'id',
+        'nombre',
+        'faseInicio',
+        'estado',
+        'participantes'
+      ]) &&
+        isText(data.id) &&
+        isText(data.nombre) &&
+        isPartidoFase(data.faseInicio) &&
+        isTorneoEstado(data.estado) &&
+        data.participantes is list;
+    }
+
+    function validTorneoParticipantesUpdate(data) {
+      return data.participantes is list &&
+        data.participantes.size() <= 50;
+    }
+
     function validUsuarioBaseFields(data) {
       return isText(data.uid) &&
         isText(data.nombre) &&
@@ -472,6 +506,35 @@ service cloud.firestore {
     match /medallas/{medallaId} {
       allow read: if signedIn();
       allow write: if false;
+    }
+
+    match /torneos/{torneoId} {
+      allow read: if signedIn();
+      allow create: if isAdmin() &&
+        request.resource.data.id == torneoId &&
+        validTorneoCreate(request.resource.data);
+      allow update: if isAdmin() &&
+        request.resource.data.id == resource.data.id &&
+        request.resource.data.nombre == resource.data.nombre &&
+        request.resource.data.faseInicio == resource.data.faseInicio && (
+          (
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['estado']) &&
+            isTorneoEstado(request.resource.data.estado)
+          ) ||
+          (
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['participantes']) &&
+            validTorneoParticipantesUpdate(request.resource.data)
+          ) ||
+          (
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'estado',
+              'participantes'
+            ]) &&
+            isTorneoEstado(request.resource.data.estado) &&
+            validTorneoParticipantesUpdate(request.resource.data)
+          )
+        );
+      allow delete: if isAdmin();
     }
 
     match /recordatoriosEnviados/{recordatorioId} {

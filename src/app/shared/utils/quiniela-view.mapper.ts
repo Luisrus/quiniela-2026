@@ -54,7 +54,7 @@ export function toUiMatch(partido: Partido): UiMatch {
       name: partido.equipoVisitante,
       flag: resolveCrestUrl(partido.equipoVisitante, partido.banderas.visitante)
     },
-    status: partido.estado === 'en_juego'
+    status: partido.estado === 'en_juego' || (partido.estado === 'programado' && partido.fechaInicio.toMillis() <= Date.now())
       ? 'live'
       : partido.estado === 'finalizado'
         ? 'played'

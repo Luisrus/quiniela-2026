@@ -1,13 +1,13 @@
 {
-  "name": "Quiniela Rustrian",
-  "short_name": "Quiniela",
-  "description": "Quiniela del Mundial 2026 para la familia Rustrian.",
+  "name": "Mundial 2026",
+  "short_name": "Mundial 2026",
+  "description": "Quiniela del Mundial 2026.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#0E1015",
-  "theme_color": "#0E1015",
+  "theme_color": "#0e1015",
   "icons": [
     {
       "src": "/icons/icon-192.png",

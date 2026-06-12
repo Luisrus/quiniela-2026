@@ -8,9 +8,11 @@ import { AuthService } from '../../core/services/auth.service';
 import { MedallasService } from '../../core/services/medallas.service';
 import { PartidosService } from '../../core/services/partidos.service';
 import { PronosticosService } from '../../core/services/pronosticos.service';
+import { TorneosService } from '../../core/services/torneos.service';
 import { UsuariosService } from '../../core/services/usuarios.service';
 import { esTitular } from '../../core/utils/usuario-tipo.util';
 import type { Usuario } from '../../core/models/usuario.model';
+import { partidoFases } from '../../core/models/partido.model';
 import { AvatarComponent } from '../../shared/components/quiniela-ui/avatar.component';
 import { BadgeComponent } from '../../shared/components/quiniela-ui/badge.component';
 import { StreakCrownsComponent } from '../../shared/components/quiniela-ui/streak-crowns.component';
@@ -59,6 +61,7 @@ export class TablaPage {
   private readonly usuariosService = inject(UsuariosService);
   private readonly partidosService = inject(PartidosService);
   private readonly pronosticosService = inject(PronosticosService);
+  private readonly torneosService = inject(TorneosService);
 
   private readonly usuariosSource = toSignal(this.usuariosService.usuarios$(), {
     initialValue: undefined
@@ -72,36 +75,53 @@ export class TablaPage {
   private readonly medallasRecientesSource = toSignal(this.medallasService.medallasRecientes$(), {
     initialValue: [] as const
   });
+  private readonly torneosSource = toSignal(this.torneosService.torneos$(), {
+    initialValue: undefined
+  });
 
   protected readonly skeletonRows: readonly number[] = [1, 2, 3];
   protected readonly invitadosExpanded = signal(false);
   protected readonly viewMode = signal<'tabla' | 'grafica'>('tabla');
   protected readonly chartFilter = signal<'todos' | 'mio'>('todos');
+  protected readonly selectedTorneoId = signal<string>('global');
 
   protected readonly userId = computed(() => this.auth.userProfile()?.uid ?? '');
   protected readonly isLoading = computed(() =>
     this.usuariosSource() === undefined || 
     this.partidosSource() === undefined ||
-    this.pronosticosSource() === undefined
+    this.pronosticosSource() === undefined ||
+    this.torneosSource() === undefined
   );
+
+  protected readonly misTorneos = computed(() => {
+    const torneos = this.torneosSource() ?? [];
+    return torneos.filter(t => t.participantes.includes(this.userId())).sort((a, b) => a.nombre.localeCompare(b.nombre));
+  });
+
+  protected readonly activeTorneo = computed(() => {
+    const torneos = this.torneosSource() ?? [];
+    return torneos.find(t => t.id === this.selectedTorneoId());
+  });
 
   protected readonly hasLiveMatch = computed(() =>
     (this.partidosSource() ?? []).some((partido) => partido.estado === 'en_juego')
   );
 
-  protected readonly titularesPlayers = computed(() =>
-    this.buildRankedPlayers(
-      (this.usuariosSource() ?? []).filter((usuario) => esTitular(usuario.tipo)),
-      true
-    )
-  );
+  protected readonly titularesPlayers = computed(() => {
+    const active = this.activeTorneo();
+    const users = (this.usuariosSource() ?? [])
+      .filter((usuario) => esTitular(usuario.tipo))
+      .filter((usuario) => active ? active.participantes.includes(usuario.uid) : true);
+    return this.buildRankedPlayers(users, true, active?.id);
+  });
 
-  protected readonly invitadosPlayers = computed(() =>
-    this.buildRankedPlayers(
-      (this.usuariosSource() ?? []).filter((usuario) => usuario.tipo === 'invitado'),
-      false
-    )
-  );
+  protected readonly invitadosPlayers = computed(() => {
+    const active = this.activeTorneo();
+    const users = (this.usuariosSource() ?? [])
+      .filter((usuario) => usuario.tipo === 'invitado')
+      .filter((usuario) => active ? active.participantes.includes(usuario.uid) : true);
+    return this.buildRankedPlayers(users, false, active?.id);
+  });
 
   protected readonly hasAnyPlayer = computed(() =>
     this.titularesPlayers().length > 0 || this.invitadosPlayers().length > 0
@@ -133,15 +153,23 @@ export class TablaPage {
     const partidos = this.partidosSource() ?? [];
     const pronosticos = this.pronosticosSource() ?? [];
 
+    const active = this.activeTorneo();
+
     const getJornadaKey = (partido: any) => {
       const j = partido.jornada == null ? partido.fase : partido.jornada;
       return `J${j}`;
     };
 
-    // Mapear partidoId -> jornadaKey para partidos finalizados
+    // Mapear partidoId -> jornadaKey para partidos finalizados y válidos para el torneo
     const partidoAJornada = new Map<string, string>();
     partidos.forEach(p => {
       if (p.estado === 'finalizado') {
+        if (active) {
+          // Filtrar partidos por torneo
+          const matchFaseIndex = partidoFases.indexOf(p.fase);
+          const torneoFaseIndex = partidoFases.indexOf(active.faseInicio);
+          if (matchFaseIndex < torneoFaseIndex) return;
+        }
         partidoAJornada.set(p.id, getJornadaKey(p));
       }
     });
@@ -280,25 +308,33 @@ export class TablaPage {
     return 'var(--text-primary)';
   }
 
-  private buildRankedPlayers(usuarios: readonly Usuario[], includeMedals: boolean): TablaPlayer[] {
+  private buildRankedPlayers(usuarios: readonly Usuario[], includeMedals: boolean, torneoId?: string): TablaPlayer[] {
     return [...usuarios]
       .map((usuario) => {
-        const liveTotal = this.hasLiveMatch()
-          ? usuario.puntosProvisionales ?? usuario.puntos
-          : usuario.puntos;
-        const liveDelta = this.hasLiveMatch()
-          ? Math.max(0, liveTotal - usuario.puntos)
-          : 0;
+        let pts = usuario.puntos;
+        let prov = usuario.puntosProvisionales;
+        let delta = 0;
+
+        if (torneoId) {
+          pts = usuario.puntosPorTorneo?.[torneoId] ?? 0;
+          prov = pts; // no hay provisionales por torneo
+          delta = 0;
+        } else {
+          delta = this.hasLiveMatch() ? Math.max(0, (prov ?? pts) - pts) : 0;
+        }
+
+        const liveTotal = this.hasLiveMatch() && prov !== undefined ? prov : pts;
 
         return {
           usuario,
           liveTotal,
-          liveDelta
+          liveDelta: delta,
+          puntosBase: pts
         };
       })
       .sort((left, right) =>
         right.liveTotal - left.liveTotal ||
-        right.usuario.puntos - left.usuario.puntos ||
+        right.puntosBase - left.puntosBase ||
         left.usuario.nombre.localeCompare(right.usuario.nombre)
       )
       .map<TablaPlayer>((item, index) => ({

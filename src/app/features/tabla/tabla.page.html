@@ -1,7 +1,21 @@
 <div style="height: 100%; display: flex; flex-direction: column; overflow: hidden">
   <div style="padding: 18px 20px 14px; flex-shrink: 0">
     <div style="display: flex; align-items: center; justify-content: space-between">
-      <h1 style="font-size: 23px; font-weight: 800; letter-spacing: -0.02em; margin: 0">Tabla</h1>
+      <div style="display: flex; align-items: center; gap: 8px; overflow: hidden;">
+        <h1 style="font-size: 23px; font-weight: 800; letter-spacing: -0.02em; margin: 0">Tabla</h1>
+        @if (misTorneos().length > 0) {
+          <select
+            [value]="selectedTorneoId()"
+            (change)="selectedTorneoId.set($any($event.target).value)"
+            style="background: var(--bg-elevated); border: 1px solid var(--bg-border); color: var(--text-primary); padding: 4px 8px; border-radius: 8px; font-weight: 700; font-size: 12px; max-width: 140px; text-overflow: ellipsis;"
+          >
+            <option value="global">Global</option>
+            @for (torneo of misTorneos(); track torneo.id) {
+              <option [value]="torneo.id">{{ torneo.nombre }}</option>
+            }
+          </select>
+        }
+      </div>
       
       <div style="display: flex; background: var(--bg-surface); padding: 4px; border-radius: 8px; border: 1px solid var(--bg-border)">
         <button 
@@ -171,7 +185,7 @@
           [style.line-height]="1"
           [style.color]="pointColor(position, isMe, variant)"
         >
-          {{ player.points }}
+          {{ player.liveTotal }}
         </div>
         <div
           class="live-points"

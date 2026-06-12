@@ -1,5 +1,6 @@
 import { computed, Component, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
+import { UpperCasePipe } from '@angular/common';
 
 import type { AdminJugadorUpdate } from '../../core/models/admin.model';
 import {
@@ -21,8 +22,11 @@ import {
 } from '../../shared/components/quiniela-ui/segmented-control.component';
 import { SkeletonCardComponent } from '../../shared/components/quiniela-ui/skeleton-card.component';
 import { TeamFlagComponent } from '../../shared/components/quiniela-ui/team-flag.component';
+import { TorneosService } from '../../core/services/torneos.service';
+import type { Torneo } from '../../core/models/torneo.model';
+import { partidoFases } from '../../core/models/partido.model';
 
-type AdminTab = 'resultados' | 'pronosticos' | 'jugadores';
+type AdminTab = 'resultados' | 'pronosticos' | 'jugadores' | 'torneos';
 type DraftsPartidos = Readonly<Record<string, PartidoDraft>>;
 type JugadorDrafts = Readonly<Record<string, JugadorDraft>>;
 type ScoreSide = 'local' | 'visitante';
@@ -56,7 +60,8 @@ interface JugadorDraft {
     EmptyStateComponent,
     SegmentedControlComponent,
     SkeletonCardComponent,
-    TeamFlagComponent
+    TeamFlagComponent,
+    UpperCasePipe
   ],
   templateUrl: './admin.page.html',
   styleUrl: './admin.page.scss'
@@ -66,6 +71,7 @@ export class AdminPage {
   private readonly pronosticosService = inject(PronosticosService);
   private readonly usuariosService = inject(UsuariosService);
   private readonly adminService = inject(AdminService);
+  private readonly torneosService = inject(TorneosService);
 
   private readonly partidosSource = toSignal(this.partidosService.partidos$(), {
     initialValue: undefined
@@ -76,8 +82,12 @@ export class AdminPage {
   private readonly usuariosSource = toSignal(this.usuariosService.usuarios$(), {
     initialValue: undefined
   });
+  private readonly torneosSource = toSignal(this.torneosService.torneos$(), {
+    initialValue: undefined
+  });
 
   protected readonly estados = partidoEstados;
+  protected readonly fases = partidoFases;
   protected readonly activeTab = signal<AdminTab>('resultados');
   protected readonly selectedPartidoId = signal('');
   protected readonly selectedJugadorUid = signal('');
@@ -90,17 +100,23 @@ export class AdminPage {
   protected readonly savingJugadorUid = signal<string | null>(null);
   protected readonly creandoInvitado = signal(false);
   protected readonly skeletonRows: readonly number[] = [1, 2, 3, 4];
+  
+  protected readonly nuevoTorneoNombre = signal('');
+  protected readonly nuevoTorneoFase = signal<string>('octavos');
+  protected readonly creandoTorneo = signal(false);
 
   protected readonly tabOptions: readonly SegmentedControlOption[] = [
     { value: 'resultados', label: 'Resultados' },
     { value: 'pronosticos', label: 'Pronósticos' },
-    { value: 'jugadores', label: 'Jugadores' }
+    { value: 'jugadores', label: 'Jugadores' },
+    { value: 'torneos', label: 'Torneos' }
   ];
 
   protected readonly isLoading = computed(() =>
     this.partidosSource() === undefined ||
     this.pronosticosSource() === undefined ||
-    this.usuariosSource() === undefined
+    this.usuariosSource() === undefined ||
+    this.torneosSource() === undefined
   );
 
   protected readonly partidos = computed(() =>
@@ -134,6 +150,10 @@ export class AdminPage {
 
   protected readonly selectedJugador = computed(() =>
     this.jugadores().find((jugador) => jugador.uid === this.selectedJugadorUid()) ?? null
+  );
+
+  protected readonly torneos = computed(() =>
+    [...(this.torneosSource() ?? [])].sort((a, b) => a.nombre.localeCompare(b.nombre))
   );
 
   protected readonly pronosticoGuardado = computed(() => {
@@ -366,6 +386,41 @@ export class AdminPage {
     }
   }
 
+  protected async crearTorneo(): Promise<void> {
+    const nombre = this.nuevoTorneoNombre().trim();
+    const faseInicio = this.nuevoTorneoFase() as any;
+
+    if (nombre === '') return;
+
+    this.creandoTorneo.set(true);
+    try {
+      await this.torneosService.crearTorneo({
+        nombre,
+        faseInicio,
+        estado: 'abierto',
+        participantes: []
+      });
+      this.nuevoTorneoNombre.set('');
+    } finally {
+      this.creandoTorneo.set(false);
+    }
+  }
+
+  protected async toggleTorneoEstado(torneo: Torneo): Promise<void> {
+    const nextEstado = torneo.estado === 'abierto' ? 'cerrado' : 'abierto';
+    await this.torneosService.actualizarTorneo(torneo.id, { estado: nextEstado });
+  }
+
+  protected async toggleParticipante(torneo: Torneo, uid: string): Promise<void> {
+    const participantes = new Set(torneo.participantes);
+    if (participantes.has(uid)) {
+      participantes.delete(uid);
+    } else {
+      participantes.add(uid);
+    }
+    await this.torneosService.actualizarTorneo(torneo.id, { participantes: Array.from(participantes) });
+  }
+
   protected crestFor(nombre: string, almacenada: string): string {
     return resolveCrestUrl(nombre, almacenada);
   }
@@ -527,7 +582,7 @@ function isPartidoEstado(value: string): value is PartidoEstado {
 }
 
 function isAdminTab(value: string): value is AdminTab {
-  return value === 'resultados' || value === 'pronosticos' || value === 'jugadores';
+  return value === 'resultados' || value === 'pronosticos' || value === 'jugadores' || value === 'torneos';
 }
 
 function fechaPartidoMillis(partido: Partido): number {

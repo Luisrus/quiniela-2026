@@ -39,8 +39,7 @@ function main() {
   ];
 
   if (SERVICE_ACCOUNT_PATH && existsSync(SERVICE_ACCOUNT_PATH)) {
-    const json = readFileSync(SERVICE_ACCOUNT_PATH, 'utf8').trim();
-    lines.push(`FIREBASE_SERVICE_ACCOUNT=${json}`);
+    lines.push(`FIREBASE_SERVICE_ACCOUNT_FILE=${SERVICE_ACCOUNT_PATH.split(/[/\\]/).pop()}`);
     lines.push('');
   } else {
     lines.push('FIREBASE_SERVICE_ACCOUNT=');
