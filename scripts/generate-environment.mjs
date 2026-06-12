@@ -92,7 +92,7 @@ function readFirebaseConfig() {
 
     if (!value) {
       console.error(`Falta la variable de entorno ${field}.`);
-      console.error('Definela en .env (local) o en GitLab CI/CD > Variables.');
+      console.error('Definela en .env (local) o en GitHub Actions secrets.');
       process.exit(1);
     }
 

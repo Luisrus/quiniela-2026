@@ -1,0 +1,47 @@
+# Sincroniza resultados (Football-Data → Firestore) y recordatorios push.
+#
+# Secrets en GitHub: Settings → Secrets and variables → Actions
+#   FIREBASE_SERVICE_ACCOUNT  (JSON o base64 del service account)
+#   FOOTBALL_DATA_TOKEN
+#
+# Cron: cada 10 minutos (UTC). En repo privado cuenta contra los 2000 min/mes gratis;
+# repo publico: minutos ilimitados en runners estandar.
+
+name: Scheduled sync
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: scheduled-sync
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Actualizar resultados
+        run: npm run actualizar-resultados
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          FOOTBALL_DATA_TOKEN: ${{ secrets.FOOTBALL_DATA_TOKEN }}
+
+      - name: Recordar pronosticos
+        run: npm run recordar-pronosticos
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
