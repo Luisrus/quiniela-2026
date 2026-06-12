@@ -1,20 +1,12 @@
 /**
  * Recordatorios push FCM: 1 hora antes del primer partido sin pronóstico de cada usuario.
  *
- * Variables de entorno (GitLab CI → Settings → CI/CD → Variables):
- * - FIREBASE_SERVICE_ACCOUNT (masked/protected): JSON o base64 del service account.
- *   Debe tener permisos de Firestore y Firebase Cloud Messaging (rol
- *   "Firebase Cloud Messaging Admin" o "Firebase Admin SDK Administrator").
- *
- * Programación recomendada en GitLab:
- * - Build → Pipeline schedules → cron cada 5-10 min (ej. */5 * * * *)
- * - Mismo schedule que actualizar-resultados; este job corre en paralelo.
- *
- * Firebase Console (una vez):
- * - Habilitar Cloud Messaging API en Google Cloud.
- * - Generar par de claves Web Push (VAPID) para la app web.
+ * Ejecución local: npm run recordar-pronosticos (requiere .env o FIREBASE_SERVICE_ACCOUNT).
+ * Producción: Cloud Function recordarPronosticos (Firebase Scheduler).
  */
 import { createSign } from 'node:crypto';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { loadProjectEnv, readFirebaseServiceAccountRaw } from './project-env.mjs';
 
@@ -26,16 +18,8 @@ const MAX_BATCH_WRITES = 450;
 const UNA_HORA_MS = 60 * 60 * 1000;
 const MARGEN_MS = 5 * 60 * 1000;
 
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
-
-async function main() {
-  loadProjectEnv();
-  const serviceAccount = parseServiceAccount(readFirebaseServiceAccountRaw());
-  const accessToken = await createAccessToken(serviceAccount);
-  const firestore = createFirestoreClient(serviceAccount.project_id, accessToken);
+export async function runRecordarPronosticos({ projectId, accessToken }) {
+  const firestore = createFirestoreClient(projectId, accessToken);
 
   const [partidosDocs, pronosticosDocs, usuariosDocs, recordatoriosDocs] = await Promise.all([
     firestore.list('partidos'),
@@ -87,7 +71,7 @@ async function main() {
     }
 
     await sendFcmMessage({
-      projectId: serviceAccount.project_id,
+      projectId,
       accessToken,
       token: fcmToken,
       title: 'Quiniela',
@@ -409,4 +393,25 @@ function base64Url(input) {
     .replaceAll('+', '-')
     .replaceAll('/', '_')
     .replaceAll('=', '');
+}
+
+async function main() {
+  loadProjectEnv();
+  const serviceAccount = parseServiceAccount(readFirebaseServiceAccountRaw());
+  const accessToken = await createAccessToken(serviceAccount);
+
+  await runRecordarPronosticos({
+    projectId: serviceAccount.project_id,
+    accessToken
+  });
+}
+
+const entryPath = fileURLToPath(import.meta.url);
+const invokedPath = process.argv[1] ? resolve(process.argv[1]) : '';
+
+if (entryPath === invokedPath) {
+  main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
 }

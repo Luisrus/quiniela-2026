@@ -2,6 +2,8 @@
 /dist
 /.angular
 /.firebase
+/functions/node_modules
+/functions/vendor
 
 *.log
 npm-debug.log*

@@ -1,4 +1,6 @@
 import { createSign } from 'node:crypto';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { calcularPuntosPronostico } from './calcular-puntos.mjs';
 import { actualizarRachas, rachasFromUsuario } from './calcular-rachas.mjs';
@@ -16,17 +18,8 @@ const finalEstados = new Set(['FINISHED', 'AWARDED']);
 
 const deleteField = Symbol('deleteField');
 
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
-
-async function main() {
-  loadProjectEnv();
-  const footballDataToken = requiredEnv('FOOTBALL_DATA_TOKEN');
-  const serviceAccount = parseServiceAccount(readFirebaseServiceAccountRaw());
-  const accessToken = await createAccessToken(serviceAccount);
-  const firestore = createFirestoreClient(serviceAccount.project_id, accessToken);
+export async function runActualizarResultados({ footballDataToken, projectId, accessToken }) {
+  const firestore = createFirestoreClient(projectId, accessToken);
 
   const apiMatches = await fetchFootballDataMatches(footballDataToken);
   const existingPartidos = await firestore.list('partidos');
@@ -1037,3 +1030,25 @@ function uniqueStrings(values) {
   return [...new Set(values)];
 }
 
+async function main() {
+  loadProjectEnv();
+  const footballDataToken = requiredEnv('FOOTBALL_DATA_TOKEN');
+  const serviceAccount = parseServiceAccount(readFirebaseServiceAccountRaw());
+  const accessToken = await createAccessToken(serviceAccount);
+
+  await runActualizarResultados({
+    footballDataToken,
+    projectId: serviceAccount.project_id,
+    accessToken
+  });
+}
+
+const entryPath = fileURLToPath(import.meta.url);
+const invokedPath = process.argv[1] ? resolve(process.argv[1]) : '';
+
+if (entryPath === invokedPath) {
+  main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}

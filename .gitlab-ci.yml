@@ -8,28 +8,19 @@
 # Firebase deploy:
 #   FIREBASE_TOKEN  (generar con: firebase login:ci)
 #
-# Scripts programados:
-#   FIREBASE_SERVICE_ACCOUNT  (JSON o base64 del service account)
-#   FOOTBALL_DATA_TOKEN       (token de Football-Data.org)
-#
-# Pipeline schedules (Build > Pipeline schedules):
-#   Rama main, cron cada 10 minutos para actualizar resultados y recordatorios.
+# Resultados y recordatorios: Cloud Functions (Firebase Scheduler), no GitLab CI.
 
 workflow:
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_COMMIT_BRANCH == "main"
 
 stages:
   - deploy
-  - scheduled
 
 deploy-hosting:
   stage: deploy
   image: node:22-alpine
   rules:
-    - if: '$CI_PIPELINE_SOURCE == "schedule"'
-      when: never
     - if: '$CI_COMMIT_BRANCH == "main"'
   script:
     - npm ci
@@ -40,23 +31,3 @@ deploy-hosting:
   environment:
     name: production
     url: https://rus-quiniela.web.app
-
-actualizar-resultados:
-  stage: scheduled
-  image: node:22-alpine
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "schedule"'
-    - when: never
-  script:
-    - npm ci
-    - npm run actualizar-resultados
-
-recordar-pronosticos:
-  stage: scheduled
-  image: node:22-alpine
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "schedule"'
-    - when: never
-  script:
-    - npm ci
-    - npm run recordar-pronosticos

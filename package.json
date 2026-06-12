@@ -13,6 +13,8 @@
     "env:development": "node scripts/generate-environment.mjs development",
     "env:production": "node scripts/generate-environment.mjs production",
     "deploy:hosting": "npm run build:prod && firebase deploy --only hosting,firestore:rules",
+    "deploy:functions": "node functions/sync-scripts.mjs && firebase deploy --only functions",
+    "deploy:all": "npm run build:prod && node functions/sync-scripts.mjs && firebase deploy --only hosting,firestore:rules,functions",
     "actualizar-resultados": "node scripts/actualizar-resultados.mjs",
     "recordar-pronosticos": "node scripts/recordar-pronosticos.mjs",
     "test:puntos": "node scripts/calcular-puntos.test.mjs"
