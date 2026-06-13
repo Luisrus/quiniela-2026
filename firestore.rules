@@ -115,6 +115,10 @@ service cloud.firestore {
       return value is int && value >= 0;
     }
 
+    function validPuntosPorTorneo(value) {
+      return value is map && value.size() <= 30;
+    }
+
     function isOptionalRacha(value) {
       return value == null || isRacha(value);
     }
@@ -300,6 +304,7 @@ service cloud.firestore {
         isAdmin() &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'puntos',
+            'puntosPorTorneo',
             'rachaAciertos',
             'rachaAciertosMaxima',
             'rachaExactos',
@@ -308,6 +313,7 @@ service cloud.firestore {
           request.resource.data.uid == resource.data.uid &&
           request.resource.data.puntos is int &&
           request.resource.data.puntos >= 0 &&
+          validPuntosPorTorneo(request.resource.data.puntosPorTorneo) &&
           isRacha(request.resource.data.rachaAciertos) &&
           isRacha(request.resource.data.rachaAciertosMaxima) &&
           isRacha(request.resource.data.rachaExactos) &&

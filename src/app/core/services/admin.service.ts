@@ -190,19 +190,54 @@ export class AdminService {
       getDocs(this.partidosCollection),
       getDocs(torneosCollection)
     ]);
-    const pronosticoRefsParaActualizar = new Set(
-      pronosticosDelPartidoSnapshot.docs.map((snapshot) => snapshot.ref.path)
-    );
-    const pronosticoRefs = pronosticosSnapshot.docs.map((snapshot) => snapshot.ref);
     const usuarioRefs = usuariosSnapshot.docs.map((snapshot) => snapshot.ref);
     const partidoRef = this.partidoRef(input.partidoId);
 
     const partidoFaseMap = new Map<string, number>();
-    partidosSnapshot.forEach(doc => {
-      const p = doc.data();
-      partidoFaseMap.set(p.id, partidoFases.indexOf(p.fase));
+    partidosSnapshot.forEach((partidoDoc) => {
+      const partido = partidoDoc.data();
+      partidoFaseMap.set(partido.id, partidoFases.indexOf(partido.fase));
     });
-    const torneos = torneosSnapshot.docs.map(doc => doc.data());
+    const torneos = torneosSnapshot.docs.map((torneoDoc) => torneoDoc.data());
+
+    const puntosPorUsuario = new Map<string, number>();
+    const puntosPorTorneoPorUsuario = new Map<string, Record<string, number>>();
+    const puntosPartidoPorUid = new Map<string, number>();
+    const puntosGanadosPorPronosticoRef = new Map<string, number>();
+
+    for (const pronosticoDoc of pronosticosSnapshot.docs) {
+      const pronostico = pronosticoDoc.data();
+      const esPronosticoDelPartido = pronostico.partidoId === input.partidoId;
+      const puntos = esPronosticoDelPartido
+        ? calcularPuntosPronostico(pronostico, input)
+        : numberOrZero(pronostico.puntosGanados);
+
+      puntosPorUsuario.set(
+        pronostico.uid,
+        (puntosPorUsuario.get(pronostico.uid) ?? 0) + puntos
+      );
+
+      const pronosticoFaseIndex = partidoFaseMap.get(pronostico.partidoId) ?? -1;
+      let puntosTorneo = puntosPorTorneoPorUsuario.get(pronostico.uid);
+      if (!puntosTorneo) {
+        puntosTorneo = {};
+        puntosPorTorneoPorUsuario.set(pronostico.uid, puntosTorneo);
+      }
+
+      for (const torneo of torneos) {
+        const torneoFaseIndex = partidoFases.indexOf(torneo.faseInicio);
+        if (pronosticoFaseIndex >= torneoFaseIndex && torneo.participantes.includes(pronostico.uid)) {
+          puntosTorneo[torneo.id] = (puntosTorneo[torneo.id] ?? 0) + puntos;
+        }
+      }
+
+      if (!esPronosticoDelPartido) {
+        continue;
+      }
+
+      puntosPartidoPorUid.set(pronostico.uid, puntos);
+      puntosGanadosPorPronosticoRef.set(pronosticoDoc.ref.path, puntos);
+    }
 
     await runTransaction(this.firestore, async (transaction) => {
       const partidoSnapshot = await transaction.get(partidoRef);
@@ -211,54 +246,17 @@ export class AdminService {
         throw new Error(`No existe el partido ${input.partidoId}.`);
       }
 
-      const pronosticoSnapshots = await Promise.all(
-        pronosticoRefs.map((pronosticoRef) => transaction.get(pronosticoRef))
-      );
       const usuarioSnapshots = await Promise.all(
         usuarioRefs.map((usuarioRef) => transaction.get(usuarioRef))
       );
 
-      const puntosPorUsuario = new Map<string, number>();
-      const puntosPorTorneoPorUsuario = new Map<string, Record<string, number>>();
-      const puntosPartidoPorUid = new Map<string, number>();
-
-      for (const pronosticoSnapshot of pronosticoSnapshots) {
-        if (!pronosticoSnapshot.exists()) {
+      for (const pronosticoDoc of pronosticosDelPartidoSnapshot.docs) {
+        const puntos = puntosGanadosPorPronosticoRef.get(pronosticoDoc.ref.path);
+        if (puntos === undefined) {
           continue;
         }
 
-        const pronostico = pronosticoSnapshot.data();
-        const esPronosticoDelPartido = pronostico.partidoId === input.partidoId;
-        const puntos = esPronosticoDelPartido
-          ? calcularPuntosPronostico(pronostico, input)
-          : numberOrZero(pronostico.puntosGanados);
-
-        puntosPorUsuario.set(
-          pronostico.uid,
-          (puntosPorUsuario.get(pronostico.uid) ?? 0) + puntos
-        );
-
-        const pronosticoFaseIndex = partidoFaseMap.get(pronostico.partidoId) ?? -1;
-        let pt = puntosPorTorneoPorUsuario.get(pronostico.uid);
-        if (!pt) {
-          pt = {};
-          puntosPorTorneoPorUsuario.set(pronostico.uid, pt);
-        }
-
-        for (const torneo of torneos) {
-          const torneoFaseIndex = partidoFases.indexOf(torneo.faseInicio);
-          if (pronosticoFaseIndex >= torneoFaseIndex && torneo.participantes.includes(pronostico.uid)) {
-            pt[torneo.id] = (pt[torneo.id] ?? 0) + puntos;
-          }
-        }
-
-        if (esPronosticoDelPartido) {
-          puntosPartidoPorUid.set(pronostico.uid, puntos);
-        }
-
-        if (esPronosticoDelPartido && pronosticoRefsParaActualizar.has(pronosticoSnapshot.ref.path)) {
-          transaction.update(pronosticoSnapshot.ref, { puntosGanados: puntos });
-        }
+        transaction.update(pronosticoDoc.ref, { puntosGanados: puntos });
       }
 
       for (const usuarioSnapshot of usuarioSnapshots) {
