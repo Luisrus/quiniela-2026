@@ -6,25 +6,38 @@ import type { UiPlayer } from '../../models/quiniela-view.model';
   selector: 'app-avatar',
   standalone: true,
   template: `
-    <div
-      [style.width.px]="size"
-      [style.height.px]="size"
-      [style.border-radius]="'50%'"
-      [style.background]="background"
-      [style.border]="border"
-      [style.display]="'flex'"
-      [style.align-items]="'center'"
-      [style.justify-content]="'center'"
-      [style.color]="'#fff'"
-      [style.font-size.px]="size * 0.33"
-      [style.font-weight]="700"
-      [style.font-family]="'var(--font-ui)'"
-      [style.flex-shrink]="0"
-      [style.letter-spacing]="'-0.01em'"
-      [style.user-select]="'none'"
-    >
-      {{ player.initials }}
-    </div>
+    @if (player.photoUrl) {
+      <img
+        [src]="player.photoUrl"
+        [alt]="player.name"
+        [style.width.px]="size"
+        [style.height.px]="size"
+        [style.border-radius]="'50%'"
+        [style.object-fit]="'cover'"
+        [style.flex-shrink]="0"
+        [style.border]="border"
+      >
+    } @else {
+      <div
+        [style.width.px]="size"
+        [style.height.px]="size"
+        [style.border-radius]="'50%'"
+        [style.background]="background"
+        [style.border]="border"
+        [style.display]="'flex'"
+        [style.align-items]="'center'"
+        [style.justify-content]="'center'"
+        [style.color]="'#fff'"
+        [style.font-size.px]="size * 0.33"
+        [style.font-weight]="700"
+        [style.font-family]="'var(--font-ui)'"
+        [style.flex-shrink]="0"
+        [style.letter-spacing]="'-0.01em'"
+        [style.user-select]="'none'"
+      >
+        {{ player.initials }}
+      </div>
+    }
   `
 })
 export class AvatarComponent {
