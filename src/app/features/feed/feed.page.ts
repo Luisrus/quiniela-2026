@@ -126,7 +126,7 @@ export class FeedPage {
   });
 
   private readonly feedTargetIds = computed(() =>
-    this.feedItems().flatMap((item) => item.result.targetId ?? [])
+    uniqueStrings(this.feedItems().map((item) => reactionTargetIdFor(item)))
   );
   private readonly reaccionesSource = toSignal(
     toObservable(this.feedTargetIds).pipe(
@@ -140,7 +140,7 @@ export class FeedPage {
   );
 
   protected reactionCountsFor(item: UiFeedItem): Readonly<Record<string, number>> {
-    const targetId = item.result.targetId ?? '';
+    const targetId = reactionTargetIdFor(item);
     const counts: Record<string, number> = {};
 
     for (const reaction of this.reaccionesSource() ?? []) {
@@ -155,7 +155,7 @@ export class FeedPage {
   }
 
   protected myReactionFor(item: UiFeedItem): string | null {
-    const targetId = item.result.targetId ?? '';
+    const targetId = reactionTargetIdFor(item);
 
     return currentReaction(
       this.reaccionesSource() ?? [],
@@ -166,7 +166,7 @@ export class FeedPage {
   }
 
   protected async handleReact(item: UiFeedItem, emoji: string): Promise<void> {
-    const targetId = buildPronosticoId(item.result.player.id, item.match.id);
+    const targetId = reactionTargetIdFor(item);
     const current = this.myReactionFor(item);
 
     if (current === emoji) {
@@ -184,4 +184,8 @@ export class FeedPage {
       emoji
     });
   }
+}
+
+function reactionTargetIdFor(item: UiFeedItem): string {
+  return item.result.targetId ?? buildPronosticoId(item.result.player.id, item.match.id);
 }
