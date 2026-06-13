@@ -1,5 +1,5 @@
 const TIMEZONE = 'America/Guatemala';
-const VENTANA_DIAS = 3;
+const VENTANA_DIAS = 2;
 
 export function dayKeyFromDate(date: Date): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: TIMEZONE }).format(date);
@@ -39,7 +39,7 @@ export function uniqueStrings(values: readonly string[]): readonly string[] {
   return [...new Set(values.filter((value) => value.trim() !== ''))];
 }
 
-/** Hoy + los próximos 2 días (3 en total), zona Guatemala. */
+/** Hoy + el próximo día (2 en total), zona Guatemala. */
 export function weekDayKeys(fromDayKey: string = todayDayKey()): readonly string[] {
   const [year, month, day] = fromDayKey.split('-').map(Number);
   const endDate = new Date(Date.UTC(year, month - 1, day + VENTANA_DIAS - 1, 12, 0, 0, 0));
