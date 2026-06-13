@@ -34,6 +34,7 @@ export class UsuariosService {
     'usuarios'
   ) as CollectionReference<Usuario>;
   private readonly usuariosCache$ = this.createUsuariosStream();
+  private readonly ensuredUids = new Set<string>();
 
   usuarios$(): Observable<readonly Usuario[]> {
     return this.usuariosCache$;
@@ -98,6 +99,11 @@ export class UsuariosService {
     }
 
     const uid = profile.uid;
+
+    if (this.ensuredUids.has(uid)) {
+      return 'existente';
+    }
+
     const usuarioRef = this.usuarioRef(uid);
 
     try {
@@ -108,6 +114,7 @@ export class UsuariosService {
       const snapshot = await getDoc(usuarioRef);
 
       if (snapshot.exists()) {
+        this.ensuredUids.add(uid);
         return 'existente';
       }
 
@@ -124,6 +131,7 @@ export class UsuariosService {
         rachaExactosMaxima: 0
       });
 
+      this.ensuredUids.add(uid);
       return 'nuevo';
     } catch (error: unknown) {
       this.errors.report('No se pudo registrar tu perfil en la quiniela.', error);

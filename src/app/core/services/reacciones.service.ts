@@ -48,14 +48,10 @@ export class ReaccionesService {
     this.firestore,
     'reacciones'
   ) as CollectionReference<StoredReaccion>;
-  private readonly reaccionesCache$ = this.listenReacciones(this.reaccionesCollection);
   private readonly reaccionesPorTargetCache = new Map<string, Observable<readonly Reaccion[]>>();
   private readonly reaccionesPorUsuarioCache = new Map<string, Observable<readonly Reaccion[]>>();
   private readonly reaccionesPorTargetsCache = new Map<string, Observable<readonly Reaccion[]>>();
-
-  reacciones$(): Observable<readonly Reaccion[]> {
-    return this.reaccionesCache$;
-  }
+  private readonly reaccionesPorBatchCache = new Map<string, Observable<readonly Reaccion[]>>();
 
   reaccionesPorTarget$(
     targetTipo: ReaccionTargetTipo,
@@ -96,11 +92,32 @@ export class ReaccionesService {
       return cached;
     }
 
-    const streams = ids.map((targetId) => this.reaccionesPorTarget$(targetTipo, targetId));
-    const stream$ = combineLatest(streams).pipe(
-      map((groups) => groups.flat()),
-      shareReplay({ bufferSize: 1, refCount: false })
-    );
+    const batches = chunkArray(ids, 30);
+    const batchStreams = batches.map((batch) => {
+      const batchKey = `${targetTipo}:batch:${batch.join('|')}`;
+      const cachedBatch = this.reaccionesPorBatchCache.get(batchKey);
+
+      if (cachedBatch !== undefined) {
+        return cachedBatch;
+      }
+
+      const batchQuery = query(
+        this.reaccionesCollection,
+        where('targetTipo', '==', targetTipo),
+        where('targetId', 'in', batch)
+      );
+      const batchStream$ = this.listenReacciones(batchQuery);
+      this.reaccionesPorBatchCache.set(batchKey, batchStream$);
+      return batchStream$;
+    });
+
+    const stream$ =
+      batchStreams.length === 1
+        ? batchStreams[0]
+        : combineLatest(batchStreams).pipe(
+            map((groups) => groups.flat()),
+            shareReplay({ bufferSize: 1, refCount: false })
+          );
 
     this.reaccionesPorTargetsCache.set(cacheKey, stream$);
     return stream$;
@@ -209,4 +226,14 @@ export class ReaccionesService {
 
 function uniqueStrings(values: readonly string[]): readonly string[] {
   return [...new Set(values.filter((value) => value.trim() !== ''))].sort();
+}
+
+function chunkArray<T>(values: readonly T[], size: number): readonly (readonly T[])[] {
+  const chunks: T[][] = [];
+
+  for (let i = 0; i < values.length; i += size) {
+    chunks.push(values.slice(i, i + size) as T[]);
+  }
+
+  return chunks;
 }

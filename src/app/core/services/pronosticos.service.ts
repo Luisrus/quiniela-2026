@@ -56,17 +56,19 @@ export class PronosticosService {
     this.firestore,
     'pronosticos'
   ) as CollectionReference<StoredPronostico>;
-  private readonly pronosticosCache$ = this.listenPronosticos(this.pronosticosCollection);
-  private readonly pronosticosConFraseCache$ = this.createPronosticosConFraseStream();
+  private pronosticosCache$: Observable<readonly Pronostico[]> | undefined;
+  private pronosticosConFraseCache$: Observable<readonly Pronostico[]> | undefined;
   private readonly pronosticosPorUsuarioCache = new Map<string, Observable<readonly Pronostico[]>>();
   private readonly pronosticosPorPartidoCache = new Map<string, Observable<readonly Pronostico[]>>();
   private readonly pronosticosPorPartidosCache = new Map<string, Observable<readonly Pronostico[]>>();
 
   pronosticos$(): Observable<readonly Pronostico[]> {
+    this.pronosticosCache$ ??= this.listenPronosticos(this.pronosticosCollection);
     return this.pronosticosCache$;
   }
 
   pronosticosConFrase$(): Observable<readonly Pronostico[]> {
+    this.pronosticosConFraseCache$ ??= this.createPronosticosConFraseStream();
     return this.pronosticosConFraseCache$;
   }
 
