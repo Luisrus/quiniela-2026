@@ -147,7 +147,7 @@ export class TablaPage {
       }
     },
     elements: {
-      line: { tension: 0.3, borderWidth: 2 },
+      line: { tension: 0.4, borderWidth: 2 },
       point: { radius: 4, hoverRadius: 6 }
     }
   };
@@ -223,8 +223,8 @@ export class TablaPage {
         borderWidth: isMe ? 3 : 2,
         pointBackgroundColor: color,
         pointBorderColor: color,
-        tension: 0.3,
-        fill: false
+        tension: 0.4,
+        fill: true
       };
     });
 
