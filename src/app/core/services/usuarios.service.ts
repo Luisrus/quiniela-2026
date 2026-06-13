@@ -114,6 +114,7 @@ export class UsuariosService {
       const snapshot = await getDoc(usuarioRef);
 
       if (snapshot.exists()) {
+        await syncFotoUrlIfNeeded(usuarioRef, snapshot.data(), profile);
         this.ensuredUids.add(uid);
         return 'existente';
       }
@@ -196,6 +197,21 @@ function toUserProfile(firebaseUser: FirebaseUser | null | undefined): UserProfi
     email: firebaseUser.email,
     photoURL: firebaseUser.photoURL
   };
+}
+
+async function syncFotoUrlIfNeeded(
+  usuarioRef: DocumentReference<Usuario>,
+  usuario: Usuario,
+  profile: UserProfile
+): Promise<void> {
+  const authPhoto = profile.photoURL?.trim() ?? '';
+  const storedPhoto = usuario.fotoUrl?.trim() ?? '';
+
+  if (authPhoto === '' || storedPhoto !== '') {
+    return;
+  }
+
+  await updateDoc(usuarioRef, { fotoUrl: authPhoto });
 }
 
 function defaultNombre(profile: UserProfile): string {

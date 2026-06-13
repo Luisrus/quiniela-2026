@@ -1,4 +1,4 @@
-import { Component, Input } from '@angular/core';
+import { Component, Input, OnChanges } from '@angular/core';
 
 import type { UiPlayer } from '../../models/quiniela-view.model';
 
@@ -6,16 +6,18 @@ import type { UiPlayer } from '../../models/quiniela-view.model';
   selector: 'app-avatar',
   standalone: true,
   template: `
-    @if (player.photoUrl) {
+    @if (showPhoto) {
       <img
         [src]="player.photoUrl"
         [alt]="player.name"
+        referrerpolicy="no-referrer"
         [style.width.px]="size"
         [style.height.px]="size"
         [style.border-radius]="'50%'"
         [style.object-fit]="'cover'"
         [style.flex-shrink]="0"
         [style.border]="border"
+        (error)="onPhotoError()"
       >
     } @else {
       <div
@@ -40,9 +42,19 @@ import type { UiPlayer } from '../../models/quiniela-view.model';
     }
   `
 })
-export class AvatarComponent {
+export class AvatarComponent implements OnChanges {
   @Input({ required: true }) player!: UiPlayer;
   @Input() size = 36;
+
+  protected showPhoto = false;
+
+  ngOnChanges(): void {
+    this.showPhoto = this.hasPhotoUrl();
+  }
+
+  protected onPhotoError(): void {
+    this.showPhoto = false;
+  }
 
   get background(): string {
     return `hsl(${this.player.hue}, 58%, 32%)`;
@@ -50,5 +62,10 @@ export class AvatarComponent {
 
   get border(): string {
     return `1.5px solid hsl(${this.player.hue}, 58%, 45%)`;
+  }
+
+  private hasPhotoUrl(): boolean {
+    const photoUrl = this.player.photoUrl?.trim();
+    return photoUrl !== undefined && photoUrl !== '';
   }
 }

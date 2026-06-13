@@ -37,7 +37,7 @@ export function toUiPlayer(usuario: Usuario, position: number): UiPlayer {
     medals: [],
     fav: resolveCrestUrl(usuario.equipoFavorito ?? ''),
     position,
-    photoUrl: usuario.fotoUrl
+    photoUrl: normalizePhotoUrl(usuario.fotoUrl)
   };
 }
 
@@ -160,6 +160,16 @@ function scoreFor(partido: Partido): UiMatchScore | null {
     home: partido.golesLocal,
     away: partido.golesVisitante
   };
+}
+
+function normalizePhotoUrl(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+
+  if (trimmed === undefined || trimmed === '') {
+    return null;
+  }
+
+  return trimmed;
 }
 
 function initialsFor(name: string): string {
