@@ -317,36 +317,40 @@ export class ResultadosPage {
       .filter((item): item is MedallaFeedItem => item !== null);
   });
 
-  /** Feed social de apuestas de la jornada del partido activo. */
+  /** Feed social de apuestas de la jornada del partido activo. Solo muestra apuestas resueltas. */
   protected readonly apuestasFeed = computed<readonly ApuestaFeedItem[]>(() => {
     const apuestas = this.apuestasSource();
     const titularesUids = this.titularesUidSet();
     const playersById = new Map(this.players().map((p) => [p.id, p]));
+    const currentUid = this.userId();
 
-    return apuestas.map((apuesta) => {
-      const retadorEsTitular = titularesUids.has(apuesta.retador);
-      const retadoEsTitular = titularesUids.has(apuesta.retado);
+    return apuestas
+      .filter((a) => a.resultado === 'ganada' || a.resultado === 'perdida' || a.resultado === 'empatada')
+      .map((apuesta) => {
+        const retadorEsTitular = titularesUids.has(apuesta.retador);
+        const retadoEsTitular = titularesUids.has(apuesta.retado);
 
-      if (!retadorEsTitular || !retadoEsTitular) {
-        return null;
-      }
+        if (!retadorEsTitular || !retadoEsTitular) {
+          return null;
+        }
 
-      const retador = playersById.get(apuesta.retador);
-      const retado = playersById.get(apuesta.retado);
+        const retador = playersById.get(apuesta.retador);
+        const retado = playersById.get(apuesta.retado);
 
-      if (!retador || !retado) {
-        return null;
-      }
+        if (!retador || !retado) {
+          return null;
+        }
 
-      const { texto, isMe } = apuestaMensaje(
-        apuesta,
-        retador.name,
-        retado.name,
-        this.userId()
-      );
+        const { texto, isMe } = apuestaMensaje(apuesta, retador.name, retado.name, currentUid);
 
-      return { id: apuesta.id, texto, isMe, resultado: apuesta.resultado };
-    }).filter((item): item is ApuestaFeedItem => item !== null);
+        const youWon =
+          apuesta.resultado === 'ganada' ? apuesta.retador === currentUid :
+          apuesta.resultado === 'perdida' ? apuesta.retado === currentUid :
+          null;
+
+        return { id: apuesta.id, texto, isMe, youWon };
+      })
+      .filter((item): item is ApuestaFeedItem => item !== null);
   });
 
   protected readonly reactionCounts = computed<readonly UiReactionCount[]>(() => {
@@ -621,7 +625,7 @@ interface ApuestaFeedItem {
   readonly id: string;
   readonly texto: string;
   readonly isMe: boolean;
-  readonly resultado: ApuestaDia['resultado'];
+  readonly youWon: boolean | null;
 }
 
 function medallaVariant(tipo: MedallaTipo): BadgeVariant {
@@ -734,17 +738,26 @@ function apuestaMensaje(
   retadoNombre: string,
   currentUid: string
 ): { texto: string; isMe: boolean } {
-  const isMe = apuesta.retador === currentUid;
-  const yo = isMe ? 'Tú' : retadorNombre;
+  const retadorEsMe = apuesta.retador === currentUid;
+  const retadoEsMe = apuesta.retado === currentUid;
+  const isMe = retadorEsMe || retadoEsMe;
+  const yo = retadorEsMe ? 'Tú' : retadorNombre;
+  const apuestaLabel = apuesta.porUnPuntoReal
+    ? '1 punto real'
+    : (apuesta.apuestaTexto ?? 'apuesta social');
 
-  const sufijo = apuesta.resultado === 'ganada'
-    ? `... ¡y le ganó! 😂`
-    : apuesta.resultado === 'perdida'
-      ? `... ¡y perdió! 💀`
-      : '... (jornada en curso) ⏳';
+  let resultado: string;
+
+  if (apuesta.resultado === 'ganada') {
+    resultado = retadorEsMe ? '¡Ganaste! 🏆' : `¡Ganó ${retadorNombre}! 🏆`;
+  } else if (apuesta.resultado === 'perdida') {
+    resultado = retadoEsMe ? '¡Ganaste! 🏆' : `¡Ganó ${retadoNombre}! 🏆`;
+  } else {
+    resultado = '¡Nadie ganó! 🤝';
+  }
 
   return {
-    texto: `🎲 ${yo} le apostó a ${retadoNombre} esta jornada${sufijo}`,
+    texto: `🎲 ${yo} le apostó a ${retadoNombre} — ${apuestaLabel} — ${resultado}`,
     isMe
   };
 }

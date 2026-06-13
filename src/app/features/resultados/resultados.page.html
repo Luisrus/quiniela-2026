@@ -1,7 +1,9 @@
-<div style="flex: 1; height: 100%; display: flex; flex-direction: column; overflow-y: auto">
-  <div style="padding: 18px 20px 10px; flex-shrink: 0">
+<div style="flex: 1; height: 100%; display: flex; flex-direction: column; overflow: hidden">
+  <div style="padding: 18px 20px 10px; flex-shrink: 0; background: var(--bg-base); position: relative; z-index: 10; border-bottom: 1px solid var(--bg-border);">
     <h1 style="font-size: 23px; font-weight: 800; letter-spacing: 0">Resultados</h1>
   </div>
+
+  <div style="flex: 1; overflow-y: auto; display: flex; flex-direction: column">
 
   @if (isLoading()) {
     <div style="padding: 2px 20px 20px; display: flex; flex-direction: column; gap: 12px">
@@ -146,7 +148,7 @@
                 style="padding: 10px 14px; border-radius: var(--r-card); font-size: 13px; font-weight: 600; line-height: 1.4"
                 [style.background]="item.isMe ? 'var(--accent-muted)' : 'var(--bg-surface)'"
                 [style.border]="item.isMe ? '1px solid color-mix(in srgb, var(--accent) 25%, transparent)' : '1px solid var(--bg-border)'"
-                [style.color]="item.resultado === 'ganada' ? 'var(--accent)' : item.resultado === 'perdida' ? 'var(--live)' : 'var(--text-secondary)'"
+                [style.color]="item.youWon === true ? 'var(--accent)' : item.youWon === false ? 'var(--live)' : 'var(--text-secondary)'"
               >
                 {{ item.texto }}
               </div>
@@ -295,4 +297,5 @@
       <app-empty-state emoji="📅" title="Sin partidos este dia" sub="Elige otro dia en el selector de arriba" />
     }
   }
+  </div>
 </div>
