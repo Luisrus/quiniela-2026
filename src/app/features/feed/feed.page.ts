@@ -8,6 +8,7 @@ import { PartidosService } from '../../core/services/partidos.service';
 import { PronosticosService } from '../../core/services/pronosticos.service';
 import { ReaccionesService } from '../../core/services/reacciones.service';
 import { UsuariosService } from '../../core/services/usuarios.service';
+import { uniqueStrings } from '../../core/utils/partido-dia.util';
 import { PredictionReactionsComponent } from '../../shared/components/quiniela-social/prediction-reactions.component';
 import { AvatarComponent } from '../../shared/components/quiniela-ui/avatar.component';
 import { EmptyStateComponent } from '../../shared/components/quiniela-ui/empty-state.component';
@@ -41,12 +42,35 @@ export class FeedPage {
   private readonly reaccionesService = inject(ReaccionesService);
   private readonly usuariosService = inject(UsuariosService);
 
-  private readonly partidosSource = toSignal(this.partidosService.partidos$(), {
-    initialValue: undefined
-  });
   private readonly pronosticosSource = toSignal(this.pronosticosService.pronosticosConFrase$(), {
     initialValue: undefined
   });
+  private readonly partidoIds = computed(() =>
+    uniqueStrings((this.pronosticosSource() ?? []).map((pronostico) => pronostico.partidoId))
+  );
+  private readonly partidosLoadKey = computed(() => {
+    if (this.pronosticosSource() === undefined) {
+      return undefined;
+    }
+
+    return this.partidoIds().join('|');
+  });
+  private readonly partidosSource = toSignal(
+    toObservable(this.partidosLoadKey).pipe(
+      switchMap((loadKey) => {
+        if (loadKey === undefined) {
+          return of(undefined);
+        }
+
+        if (loadKey === '') {
+          return of([] as const);
+        }
+
+        return this.partidosService.partidosPorIds$(loadKey.split('|'));
+      })
+    ),
+    { initialValue: undefined }
+  );
   private readonly usuariosSource = toSignal(this.usuariosService.usuarios$(), {
     initialValue: undefined
   });

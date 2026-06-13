@@ -14,6 +14,7 @@ import { PartidosService } from '../../core/services/partidos.service';
 import { PronosticosService } from '../../core/services/pronosticos.service';
 import { PronosticosEspecialesService } from '../../core/services/pronosticos-especiales.service';
 import { UsuariosService } from '../../core/services/usuarios.service';
+import { uniqueStrings } from '../../core/utils/partido-dia.util';
 import { esTitular } from '../../core/utils/usuario-tipo.util';
 import type { Pronostico } from '../../core/models/pronostico.model';
 import { AvatarComponent } from '../../shared/components/quiniela-ui/avatar.component';
@@ -55,9 +56,6 @@ export class WrappedPage {
   private readonly usuariosSource = toSignal(this.usuariosService.usuarios$(), {
     initialValue: undefined
   });
-  private readonly partidosSource = toSignal(this.partidosService.partidos$(), {
-    initialValue: undefined
-  });
   private readonly especialesSource = toSignal(this.especialesService.misPronosticosEspeciales$(), {
     initialValue: undefined
   });
@@ -73,6 +71,32 @@ export class WrappedPage {
           ? of(undefined)
           : this.pronosticosService.pronosticosPorUsuario$(uid)
       )
+    ),
+    { initialValue: undefined }
+  );
+  private readonly partidoIds = computed(() =>
+    uniqueStrings((this.pronosticosSource() ?? []).map((pronostico) => pronostico.partidoId))
+  );
+  private readonly partidosLoadKey = computed(() => {
+    if (this.pronosticosSource() === undefined) {
+      return undefined;
+    }
+
+    return this.partidoIds().join('|');
+  });
+  private readonly partidosSource = toSignal(
+    toObservable(this.partidosLoadKey).pipe(
+      switchMap((loadKey) => {
+        if (loadKey === undefined) {
+          return of(undefined);
+        }
+
+        if (loadKey === '') {
+          return of([] as const);
+        }
+
+        return this.partidosService.partidosPorIds$(loadKey.split('|'));
+      })
     ),
     { initialValue: undefined }
   );

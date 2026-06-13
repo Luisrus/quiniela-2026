@@ -13,6 +13,7 @@ import { PartidosService } from '../../core/services/partidos.service';
 import { PronosticosService } from '../../core/services/pronosticos.service';
 import { ReaccionesService } from '../../core/services/reacciones.service';
 import { UsuariosService } from '../../core/services/usuarios.service';
+import { dayKeysFromTo, todayDayKey } from '../../core/utils/partido-dia.util';
 import { esTitular } from '../../core/utils/usuario-tipo.util';
 import type { ApuestaDia } from '../../core/models/apuesta-dia.model';
 import type { Partido } from '../../core/models/partido.model';
@@ -85,7 +86,7 @@ export class ResultadosPage {
   private readonly reaccionesService = inject(ReaccionesService);
   private readonly usuariosService = inject(UsuariosService);
 
-  private readonly partidosSource = toSignal(this.partidosService.partidos$(), {
+  private readonly primerDiaSource = toSignal(this.partidosService.primerDiaTorneo$(), {
     initialValue: undefined
   });
   private readonly usuariosSource = toSignal(this.usuariosService.usuarios$(), {
@@ -119,7 +120,7 @@ export class ResultadosPage {
       return null;
     }
 
-    const partido = (this.partidosSource() ?? []).find((p) => p.id === match.id);
+    const partido = (this.partidosDelDiaSource() ?? []).find((p) => p.id === match.id);
 
     if (
       partido?.fase === 'grupos' &&
@@ -166,43 +167,18 @@ export class ResultadosPage {
     )
   );
 
-  protected readonly matchesByDay = computed(() => {
-    const groups = new Map<string, Partido[]>();
-
-    for (const partido of this.partidosSource() ?? []) {
-      const dayKey = dayKeyFromPartido(partido);
-      const current = groups.get(dayKey) ?? [];
-      groups.set(dayKey, [...current, partido]);
-    }
-
-    const sortedGroups = new Map<string, UiMatch[]>();
-
-    for (const [dayKey, partidos] of groups) {
-      const sorted = sortPartidosByStatus(partidos);
-      sortedGroups.set(dayKey, sorted.map((partido) => toUiMatch(partido)));
-    }
-
-    return sortedGroups;
-  });
-
   protected readonly dayOptions = computed<readonly DayOption[]>(() => {
+    const primerDia = this.primerDiaSource();
+
+    if (primerDia === undefined) {
+      return [];
+    }
+
     const today = todayDayKey();
-    const allDayKeys = [...this.matchesByDay().keys()];
-    const firstMatchDay = allDayKeys.sort((left, right) => left.localeCompare(right))[0] ?? null;
-    const dayKeys = new Set<string>();
-
-    for (const dayKey of allDayKeys) {
-      if (dayKey <= today) {
-        dayKeys.add(dayKey);
-      }
-    }
-
-    if (firstMatchDay !== null && today >= firstMatchDay) {
-      dayKeys.add(today);
-    }
+    const dayKeys = dayKeysFromTo(primerDia, today);
 
     return [...dayKeys]
-      .sort((left, right) => right.localeCompare(left))
+      .reverse()
       .map((value) => ({
         value,
         label: dayLabel(value)
@@ -213,9 +189,23 @@ export class ResultadosPage {
     resolveDayKey(this.selectedDayKey(), this.dayOptions())
   );
 
-  protected readonly swiperMatches = computed(() =>
-    this.matchesByDay().get(this.effectiveDayKey()) ?? []
+  private readonly partidosDelDiaSource = toSignal(
+    toObservable(this.effectiveDayKey).pipe(
+      switchMap((dayKey) =>
+        dayKey === ''
+          ? of(undefined)
+          : this.partidosService.partidosPorDia$(dayKey)
+      )
+    ),
+    { initialValue: undefined }
   );
+
+  protected readonly swiperMatches = computed(() => {
+    const partidos = this.partidosDelDiaSource() ?? [];
+    const sorted = sortPartidosByStatus(partidos);
+
+    return sorted.map((partido) => toUiMatch(partido));
+  });
 
   protected readonly hasDayOptions = computed(() => this.dayOptions().length > 0);
 
@@ -264,7 +254,8 @@ export class ResultadosPage {
   );
 
   protected readonly isLoading = computed(() =>
-    this.partidosSource() === undefined ||
+    this.primerDiaSource() === undefined ||
+    this.partidosDelDiaSource() === undefined ||
     this.pronosticosSource() === undefined ||
     this.reaccionesSource() === undefined ||
     this.usuariosSource() === undefined ||
@@ -390,10 +381,6 @@ export class ResultadosPage {
         ts: comment.creadoEn.toMillis()
       }));
   });
-
-  protected matchCountForDay(dayKey: string): number {
-    return this.matchesByDay().get(dayKey)?.length ?? 0;
-  }
 
   protected matchStatusLabel(match: UiMatch): string {
     if (match.status === 'live') {
@@ -686,18 +673,6 @@ function sortPartidosByStatus(partidos: readonly Partido[]): readonly Partido[] 
 
     return left.fechaInicio.toMillis() - right.fechaInicio.toMillis();
   });
-}
-
-function dayKeyFromPartido(partido: Partido): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/Guatemala'
-  }).format(partido.fechaInicio.toDate());
-}
-
-function todayDayKey(): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/Guatemala'
-  }).format(new Date());
 }
 
 function dayLabel(dayKey: string): string {

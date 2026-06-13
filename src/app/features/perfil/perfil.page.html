@@ -66,7 +66,7 @@
             <button
               type="button"
               class="btn-especiales"
-              [disabled]="partidosApuesta().length === 0"
+              [disabled]="!puedeCrearApuesta()"
               (click)="apuestaSheetOpen.set(true)"
             >
               Nueva

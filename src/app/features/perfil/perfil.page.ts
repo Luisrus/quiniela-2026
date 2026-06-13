@@ -13,6 +13,7 @@ import { PronosticosService } from '../../core/services/pronosticos.service';
 import { PronosticosEspecialesService } from '../../core/services/pronosticos-especiales.service';
 import { MessagingService, type MessagingEstado } from '../../core/services/messaging.service';
 import { UsuariosService } from '../../core/services/usuarios.service';
+import { uniqueStrings } from '../../core/utils/partido-dia.util';
 import {
   PREMIOS_ESPECIALES,
   type PremioEspecialMeta,
@@ -73,9 +74,10 @@ export class PerfilPage {
   private readonly usuariosSource = toSignal(this.usuariosService.usuarios$(), {
     initialValue: undefined
   });
-  private readonly partidosSource = toSignal(this.partidosService.partidos$(), {
-    initialValue: undefined
-  });
+  private readonly conteoProgramadosSource = toSignal(
+    this.partidosService.conteoPorEstado$('programado'),
+    { initialValue: undefined }
+  );
   private readonly especialesSource = toSignal(this.especialesService.misPronosticosEspeciales$(), {
     initialValue: undefined
   });
@@ -110,6 +112,45 @@ export class PerfilPage {
       )
     ),
     { initialValue: [] as readonly ApuestaDia[] }
+  );
+  private readonly partidoIds = computed(() =>
+    uniqueStrings([
+      ...(this.pronosticosSource() ?? []).map((pronostico) => pronostico.partidoId),
+      ...(this.retosRecibidosSource() ?? []).map((apuesta) => apuesta.partidoId)
+    ])
+  );
+  private readonly partidosLoadKey = computed(() => {
+    if (this.pronosticosSource() === undefined) {
+      return undefined;
+    }
+
+    return this.partidoIds().join('|');
+  });
+  private readonly partidosSource = toSignal(
+    toObservable(this.partidosLoadKey).pipe(
+      switchMap((loadKey) => {
+        if (loadKey === undefined) {
+          return of(undefined);
+        }
+
+        if (loadKey === '') {
+          return of([] as const);
+        }
+
+        return this.partidosService.partidosPorIds$(loadKey.split('|'));
+      })
+    ),
+    { initialValue: undefined }
+  );
+  private readonly programadosSource = toSignal(
+    toObservable(this.apuestaSheetOpen).pipe(
+      switchMap((open) =>
+        open
+          ? this.partidosService.partidosPorEstado$('programado')
+          : of([] as const)
+      )
+    ),
+    { initialValue: [] as const }
   );
 
   constructor() {
@@ -188,10 +229,10 @@ export class PerfilPage {
   );
 
   protected readonly partidosApuesta = computed(() =>
-    (this.partidosSource() ?? [])
-      .filter((partido) => partido.estado === 'programado')
-      .map((partido) => toUiMatch(partido))
+    this.programadosSource().map((partido) => toUiMatch(partido))
   );
+
+  protected readonly puedeCrearApuesta = computed(() => (this.conteoProgramadosSource() ?? 0) > 0);
 
   protected readonly partidoJornadaKeys = computed<Readonly<Record<string, string>>>(() => {
     const keys: Record<string, string> = {};

@@ -8,7 +8,6 @@ import { PartidosService } from '../../core/services/partidos.service';
 import { PronosticosService } from '../../core/services/pronosticos.service';
 import { ToastService } from '../../core/services/toast.service';
 import { UsuariosService } from '../../core/services/usuarios.service';
-import type { Partido } from '../../core/models/partido.model';
 import type { UiMatch, UiPrediction } from '../../shared/models/quiniela-view.model';
 import {
   groupPredictedBy,
@@ -49,13 +48,6 @@ export class PartidosPage {
   private readonly toasts = inject(ToastService);
   private readonly usuariosService = inject(UsuariosService);
 
-  private readonly partidosSource = toSignal(this.partidosService.partidos$(), {
-    initialValue: undefined
-  });
-  private readonly usuariosSource = toSignal(this.usuariosService.usuarios$(), {
-    initialValue: undefined
-  });
-
   protected readonly tab = signal<MatchTab>('upcoming');
   protected readonly selectedMatch = signal<UiMatch | null>(null);
   private readonly draftPredictions = signal<Record<string, UiPrediction>>({});
@@ -65,41 +57,38 @@ export class PartidosPage {
   protected readonly skeletonRows: readonly number[] = [1, 2, 3];
   protected readonly pronosticoCierreAviso = PRONOSTICO_CIERRE_AVISO;
 
+  private readonly partidosSource = toSignal(
+    toObservable(this.tab).pipe(
+      switchMap((tab) => this.partidosStreamForTab(tab))
+    ),
+    { initialValue: undefined }
+  );
+  private readonly usuariosSource = toSignal(this.usuariosService.usuarios$(), {
+    initialValue: undefined
+  });
+  private readonly conteoUpcomingSource = toSignal(
+    this.partidosService.conteoPorEstado$('programado'),
+    { initialValue: undefined }
+  );
+  private readonly conteoLiveSource = toSignal(
+    this.partidosService.conteoPorEstado$('en_juego'),
+    { initialValue: undefined }
+  );
+  private readonly conteoPlayedSource = toSignal(
+    this.partidosService.conteoJugados$(),
+    { initialValue: undefined }
+  );
+
   protected readonly userId = computed(() => this.auth.userProfile()?.uid ?? '');
 
   protected readonly players = computed(() =>
     (this.usuariosSource() ?? []).map((usuario, index) => toUiPlayer(usuario, index + 1))
   );
 
-  protected readonly matches = computed(() =>
+  protected readonly filteredMatches = computed(() =>
     (this.partidosSource() ?? []).map((partido) => toUiMatch(partido))
   );
 
-  protected readonly live = computed(() =>
-    this.matches().filter((match) => match.status === 'live')
-  );
-
-  protected readonly upcoming = computed(() =>
-    this.matches().filter((match) => match.status === 'upcoming')
-  );
-
-  protected readonly played = computed(() =>
-    this.matches().filter((match) => match.status === 'played')
-  );
-
-  protected readonly filteredMatches = computed(() => {
-    const tab = this.tab();
-
-    if (tab === 'live') {
-      return this.live();
-    }
-
-    if (tab === 'upcoming') {
-      return this.upcoming();
-    }
-
-    return this.played();
-  });
   private readonly filteredMatchIds = computed(() =>
     this.filteredMatches().map((match) => match.id)
   );
@@ -115,9 +104,9 @@ export class PartidosPage {
   );
 
   protected readonly segmentedOptions = computed<readonly SegmentedControlOption[]>(() => [
-    { value: 'upcoming', label: 'A pronosticar', count: this.upcoming().length },
-    { value: 'live', label: 'En Vivo', live: true, count: this.live().length },
-    { value: 'played', label: 'Jugados', count: this.played().length }
+    { value: 'upcoming', label: 'A pronosticar', count: this.conteoUpcomingSource() ?? 0 },
+    { value: 'live', label: 'En Vivo', live: true, count: this.conteoLiveSource() ?? 0 },
+    { value: 'played', label: 'Jugados', count: this.conteoPlayedSource() ?? 0 }
   ]);
 
   protected readonly predictedBy = computed(() =>
@@ -130,31 +119,11 @@ export class PartidosPage {
     this.usuariosSource() === undefined
   );
 
+  protected readonly enVivoCount = computed(() => this.conteoLiveSource() ?? 0);
+
   protected setTab(value: string): void {
     this.tab.set(value as MatchTab);
   }
-
-  /**
-   * Jornada activa: la primera jornada de grupos con al menos un partido
-   * aún programado. Solo aplica a fase de grupos con jornada numérica.
-   */
-  protected readonly jornadaActiva = computed(() => {
-    const programados = (this.partidosSource() ?? [])
-      .filter((p): p is Partido & { jornada: number } =>
-        p.fase === 'grupos' &&
-        typeof p.jornada === 'number' &&
-        p.estado === 'programado'
-      );
-
-    if (programados.length === 0) {
-      return null;
-    }
-
-    const minJornada = Math.min(...programados.map((p) => p.jornada));
-    const jornadaKey = `J${minJornada}`;
-
-    return { key: jornadaKey, label: `Jornada ${minJornada}` };
-  });
 
   protected predictionFor(matchId: string): UiPrediction {
     const draft = this.draftPredictions()[matchId];
@@ -274,6 +243,18 @@ export class PartidosPage {
 
     this.clearDraft(matchId);
     this.toasts.success('Pronóstico guardado.');
+  }
+
+  private partidosStreamForTab(tab: MatchTab) {
+    if (tab === 'live') {
+      return this.partidosService.partidosPorEstado$('en_juego');
+    }
+
+    if (tab === 'played') {
+      return this.partidosService.partidosJugados$();
+    }
+
+    return this.partidosService.partidosPorEstado$('programado');
   }
 
   private markDirty(matchId: string): void {

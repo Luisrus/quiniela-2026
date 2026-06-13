@@ -20,9 +20,8 @@
           (change)="seleccionarDia($any($event.target).value)"
         >
           @for (day of dayOptions(); track day.value) {
-            @let partidosDelDia = matchCountForDay(day.value);
             <option [value]="day.value" [selected]="effectiveDayKey() === day.value">
-              {{ day.label }} · {{ partidosDelDia }} partido{{ partidosDelDia === 1 ? '' : 's' }}
+              {{ day.label }}
             </option>
           }
         </select>

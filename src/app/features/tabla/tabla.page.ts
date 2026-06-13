@@ -63,7 +63,10 @@ export class TablaPage {
   private readonly usuariosSource = toSignal(this.usuariosService.usuarios$(), {
     initialValue: undefined
   });
-  private readonly partidosSource = toSignal(this.partidosService.partidos$(), {
+  private readonly hasLiveMatchSource = toSignal(this.partidosService.hayPartidoEnVivo$(), {
+    initialValue: undefined
+  });
+  private readonly playedCountSource = toSignal(this.partidosService.conteoPorEstado$('finalizado'), {
     initialValue: undefined
   });
   private readonly medallasRecientesSource = toSignal(this.medallasService.medallasRecientes$(), {
@@ -81,8 +84,9 @@ export class TablaPage {
 
   protected readonly userId = computed(() => this.auth.userProfile()?.uid ?? '');
   protected readonly isLoading = computed(() =>
-    this.usuariosSource() === undefined || 
-    this.partidosSource() === undefined ||
+    this.usuariosSource() === undefined ||
+    this.hasLiveMatchSource() === undefined ||
+    this.playedCountSource() === undefined ||
     this.torneosSource() === undefined
   );
 
@@ -96,9 +100,7 @@ export class TablaPage {
     return torneos.find(t => t.id === this.selectedTorneoId());
   });
 
-  protected readonly hasLiveMatch = computed(() =>
-    (this.partidosSource() ?? []).some((partido) => partido.estado === 'en_juego')
-  );
+  protected readonly hasLiveMatch = computed(() => this.hasLiveMatchSource() === true);
 
   protected readonly titularesPlayers = computed(() => {
     const active = this.activeTorneo();
@@ -120,9 +122,7 @@ export class TablaPage {
     this.titularesPlayers().length > 0 || this.invitadosPlayers().length > 0
   );
 
-  protected readonly playedCount = computed(() =>
-    (this.partidosSource() ?? []).filter((partido) => partido.estado === 'finalizado').length
-  );
+  protected readonly playedCount = computed(() => this.playedCountSource() ?? 0);
 
   protected readonly chartOptions: ChartOptions<'line'> = {
     responsive: true,

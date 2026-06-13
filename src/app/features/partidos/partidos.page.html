@@ -7,10 +7,10 @@
       <h1 style="font-size: 23px; font-weight: 800; line-height: 1.1; letter-spacing: -0.02em">Mundial 2026</h1>
     </div>
     <div style="display: flex; align-items: center; gap: 6px; margin-top: 4px">
-      @if (live().length > 0) {
+      @if (enVivoCount() > 0) {
         <div style="display: flex; align-items: center; gap: 5px; background: color-mix(in srgb, var(--live) 14%, transparent); padding: 4px 10px; border-radius: 20px">
           <app-live-dot [size]="7" />
-          <span style="font-size: 11px; color: var(--live); font-weight: 700">{{ live().length }} EN VIVO</span>
+          <span style="font-size: 11px; color: var(--live); font-weight: 700">{{ enVivoCount() }} EN VIVO</span>
         </div>
       }
     </div>
