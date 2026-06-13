@@ -88,16 +88,7 @@ export class ResultadosPage {
   private readonly partidosSource = toSignal(this.partidosService.partidos$(), {
     initialValue: undefined
   });
-  private readonly pronosticosSource = toSignal(this.pronosticosService.pronosticos$(), {
-    initialValue: undefined
-  });
-  private readonly reaccionesSource = toSignal(this.reaccionesService.reacciones$(), {
-    initialValue: undefined
-  });
   private readonly usuariosSource = toSignal(this.usuariosService.usuarios$(), {
-    initialValue: undefined
-  });
-  private readonly allComentariosSource = toSignal(this.comentariosService.comentarios$(), {
     initialValue: undefined
   });
 
@@ -161,14 +152,6 @@ export class ResultadosPage {
       )
     ),
     { initialValue: [] as const }
-  );
-
-  protected readonly isLoading = computed(() =>
-    this.partidosSource() === undefined ||
-    this.pronosticosSource() === undefined ||
-    this.reaccionesSource() === undefined ||
-    this.usuariosSource() === undefined ||
-    this.allComentariosSource() === undefined
   );
 
   protected readonly players = computed(() =>
@@ -247,6 +230,46 @@ export class ResultadosPage {
 
     return matches.find((match) => match.id === matchId) ?? matches[0] ?? null;
   });
+
+  private readonly activeMatchId = computed(() => this.activeMatch()?.id ?? null);
+  private readonly pronosticosSource = toSignal(
+    toObservable(this.activeMatchId).pipe(
+      switchMap((matchId) =>
+        matchId === null
+          ? of(undefined)
+          : this.pronosticosService.pronosticosPorPartido$(matchId)
+      )
+    ),
+    { initialValue: undefined }
+  );
+  private readonly reaccionesSource = toSignal(
+    toObservable(this.activeMatchId).pipe(
+      switchMap((matchId) =>
+        matchId === null
+          ? of(undefined)
+          : this.reaccionesService.reaccionesPorTarget$('resultado', matchId)
+      )
+    ),
+    { initialValue: undefined }
+  );
+  private readonly allComentariosSource = toSignal(
+    toObservable(this.activeMatchId).pipe(
+      switchMap((matchId) =>
+        matchId === null
+          ? of(undefined)
+          : this.comentariosService.comentariosPorPartido$(matchId)
+      )
+    ),
+    { initialValue: undefined }
+  );
+
+  protected readonly isLoading = computed(() =>
+    this.partidosSource() === undefined ||
+    this.pronosticosSource() === undefined ||
+    this.reaccionesSource() === undefined ||
+    this.usuariosSource() === undefined ||
+    this.allComentariosSource() === undefined
+  );
 
   protected readonly matchResults = computed<readonly UiPredictionResult[]>(() => {
     const activeMatch = this.activeMatch();

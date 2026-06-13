@@ -72,9 +72,7 @@ export async function runActualizarResultados({ footballDataToken, projectId, ac
     const pronosticosJornada = cierreJornada
       ? await listPronosticosPorPartidos(firestore, idsPartidosJornada(partido, partidosTorneo))
       : pronosticosDelPartido;
-    const apuestas = cierreJornada
-      ? await listApuestasPendientesJornada(firestore, jornadaBadgeKey(partido))
-      : [];
+    const apuestas = await listApuestasPendientesPartido(firestore, partido.id);
     const usuarios = await listUsuariosPorIds(firestore, [
       ...uidsFromPronosticos(pronosticosJornada),
       ...uidsFromApuestas(apuestas)
@@ -427,10 +425,10 @@ function uidsFromApuestas(apuestas) {
     .filter((uid) => typeof uid === 'string' && uid.trim() !== '');
 }
 
-async function listApuestasPendientesJornada(firestore, jornadaKey) {
+async function listApuestasPendientesPartido(firestore, partidoId) {
   try {
     const docs = await firestore.queryCollection('apuestasDia', [
-      { fieldPath: 'jornadaKey', op: 'EQUAL', value: jornadaKey }
+      { fieldPath: 'partidoId', op: 'EQUAL', value: partidoId }
     ]);
 
     return docs.filter((doc) => doc.data.resultado === 'pendiente');
@@ -544,13 +542,10 @@ async function cerrarPartidoFinalizado({
     ));
   }
 
-  const apuestasWrites = await resolverApuestasDia({
+  const apuestasWrites = await resolverApuestasPartido({
     firestore,
     partido,
-    partidos,
     pronosticos,
-    puntosDefinitivosPorUid,
-    usuarios,
     apuestas
   });
   writes.push(...apuestasWrites);
@@ -932,6 +927,85 @@ function jornadaBadgeKey(partido) {
   return `J${jornada}`;
 }
 
+async function resolverApuestasPartido({
+  firestore,
+  partido,
+  pronosticos,
+  apuestas
+}) {
+  if (apuestas.length === 0) {
+    return [];
+  }
+
+  const pronosticosPartido = pronosticos.filter((doc) => doc.data.partidoId === partido.id);
+  const writes = [];
+
+  for (const apuestaDoc of apuestas) {
+    if (apuestaDoc.data.partidoId !== partido.id || apuestaDoc.data.resultado !== 'pendiente') {
+      continue;
+    }
+
+    const retador = pronosticosPartido.find((doc) => doc.data.uid === apuestaDoc.data.retador)?.data;
+    const retado = pronosticosPartido.find((doc) => doc.data.uid === apuestaDoc.data.retado)?.data;
+    const resultado = resultadoApuestaPartido(retador, retado, partido);
+
+    apuestaDoc.data.resultado = resultado;
+
+    writes.push(updateWrite(
+      firestore.nameFor(`apuestasDia/${apuestaDoc.id}`),
+      { resultado },
+      ['resultado']
+    ));
+
+    console.log(`Apuesta ${apuestaDoc.id}: ${resultado}.`);
+  }
+
+  return writes;
+}
+
+function resultadoApuestaPartido(retador, retado, partido) {
+  if (retador === undefined || retado === undefined) {
+    return 'empatada';
+  }
+
+  const puntosRetador = calcularPuntosPronostico(retador, partido);
+  const puntosRetado = calcularPuntosPronostico(retado, partido);
+
+  if (puntosRetador === 0 && puntosRetado === 0) {
+    return 'empatada';
+  }
+
+  if (puntosRetador > puntosRetado) {
+    return 'ganada';
+  }
+
+  if (puntosRetador < puntosRetado) {
+    return 'perdida';
+  }
+
+  const distanciaRetador = distanciaMarcador(retador, partido);
+  const distanciaRetado = distanciaMarcador(retado, partido);
+
+  if (distanciaRetador < distanciaRetado) {
+    return 'ganada';
+  }
+
+  if (distanciaRetador > distanciaRetado) {
+    return 'perdida';
+  }
+
+  return 'empatada';
+}
+
+function distanciaMarcador(pronostico, partido) {
+  if (partido.golesLocal === null || partido.golesVisitante === null) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  return Math.abs(numberOrZero(pronostico.golesLocal) - partido.golesLocal) +
+    Math.abs(numberOrZero(pronostico.golesVisitante) - partido.golesVisitante);
+}
+
 /**
  * Resuelve las apuestasDia de una jornada de grupos cuando todos sus
  * partidos han finalizado. Solo actua sobre apuestas con resultado='pendiente'.
@@ -939,13 +1013,10 @@ function jornadaBadgeKey(partido) {
  *
  * @returns {Promise<object[]>} Writes de Firestore para incluir en el commit principal.
  */
-async function resolverApuestasDia({
+async function resolverApuestasDiaLegacy({
   firestore,
   partido,
-  partidos,
   pronosticos,
-  puntosDefinitivosPorUid,
-  usuarios,
   apuestas
 }) {
   // Solo aplica a fase de grupos con jornada numérica.

@@ -1,5 +1,6 @@
 import { computed, Component, inject, signal } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
+import { toObservable, toSignal } from '@angular/core/rxjs-interop';
+import { of, switchMap } from 'rxjs';
 
 import { PRONOSTICO_CIERRE_AVISO, partidoPronosticoAbierto } from '../../core/config/pronostico.config';
 import { AuthService } from '../../core/services/auth.service';
@@ -7,7 +8,6 @@ import { PartidosService } from '../../core/services/partidos.service';
 import { PronosticosService } from '../../core/services/pronosticos.service';
 import { ToastService } from '../../core/services/toast.service';
 import { UsuariosService } from '../../core/services/usuarios.service';
-import { esTitular } from '../../core/utils/usuario-tipo.util';
 import type { Partido } from '../../core/models/partido.model';
 import type { UiMatch, UiPrediction } from '../../shared/models/quiniela-view.model';
 import {
@@ -16,7 +16,6 @@ import {
   toUiPlayer,
   toUiPrediction
 } from '../../shared/utils/quiniela-view.mapper';
-import { ApuestaJornadaSheetComponent } from '../../shared/components/quiniela-social/apuesta-jornada-sheet.component';
 import { MatchDetailSheetComponent } from '../../shared/components/quiniela-social/match-detail-sheet.component';
 import { EmptyStateComponent } from '../../shared/components/quiniela-ui/empty-state.component';
 import { LiveDotComponent } from '../../shared/components/quiniela-ui/live-dot.component';
@@ -33,7 +32,6 @@ type MatchTab = 'live' | 'upcoming' | 'played';
   selector: 'app-partidos-page',
   standalone: true,
   imports: [
-    ApuestaJornadaSheetComponent,
     EmptyStateComponent,
     LiveDotComponent,
     MatchCardComponent,
@@ -54,16 +52,12 @@ export class PartidosPage {
   private readonly partidosSource = toSignal(this.partidosService.partidos$(), {
     initialValue: undefined
   });
-  private readonly pronosticosSource = toSignal(this.pronosticosService.pronosticos$(), {
-    initialValue: undefined
-  });
   private readonly usuariosSource = toSignal(this.usuariosService.usuarios$(), {
     initialValue: undefined
   });
 
   protected readonly tab = signal<MatchTab>('upcoming');
   protected readonly selectedMatch = signal<UiMatch | null>(null);
-  protected readonly apuestaSheetOpen = signal(false);
   private readonly draftPredictions = signal<Record<string, UiPrediction>>({});
   private readonly draftFrases = signal<Record<string, string>>({});
   private readonly dirtyMatches = signal<ReadonlySet<string>>(new Set());
@@ -75,12 +69,6 @@ export class PartidosPage {
 
   protected readonly players = computed(() =>
     (this.usuariosSource() ?? []).map((usuario, index) => toUiPlayer(usuario, index + 1))
-  );
-
-  protected readonly playersApuesta = computed(() =>
-    (this.usuariosSource() ?? [])
-      .filter((usuario) => esTitular(usuario.tipo))
-      .map((usuario, index) => toUiPlayer(usuario, index + 1))
   );
 
   protected readonly matches = computed(() =>
@@ -112,6 +100,19 @@ export class PartidosPage {
 
     return this.played();
   });
+  private readonly filteredMatchIds = computed(() =>
+    this.filteredMatches().map((match) => match.id)
+  );
+  private readonly pronosticosSource = toSignal(
+    toObservable(this.filteredMatchIds).pipe(
+      switchMap((matchIds) =>
+        matchIds.length === 0
+          ? of([] as const)
+          : this.pronosticosService.pronosticosPorPartidos$(matchIds)
+      )
+    ),
+    { initialValue: undefined }
+  );
 
   protected readonly segmentedOptions = computed<readonly SegmentedControlOption[]>(() => [
     { value: 'upcoming', label: 'A pronosticar', count: this.upcoming().length },

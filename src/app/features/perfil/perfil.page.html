@@ -60,6 +60,62 @@
 
       <div style="flex: 1; overflow-y: auto; padding: 18px 20px 24px">
 
+        <div style="margin-bottom: 20px">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px">
+            <h3 style="font-size: 15px; font-weight: 700; color: var(--text-primary)">Apuestas</h3>
+            <button
+              type="button"
+              class="btn-especiales"
+              [disabled]="partidosApuesta().length === 0"
+              (click)="apuestaSheetOpen.set(true)"
+            >
+              Nueva
+            </button>
+          </div>
+
+          <div class="card" style="padding: 12px 14px; display: flex; flex-direction: column; gap: 10px">
+            @if (retosRecibidos().length === 0) {
+              <p style="font-size: 12px; color: var(--text-secondary); line-height: 1.45">
+                No tienes invitaciones pendientes. Puedes retar a otro jugador por un partido especifico.
+              </p>
+            } @else {
+              <p style="font-size: 12px; color: var(--accent); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em">
+                Invitaciones pendientes
+              </p>
+              @for (reto of retosRecibidos(); track reto.id) {
+                <div style="display: flex; gap: 10px; align-items: center; justify-content: space-between; padding: 10px; border-radius: var(--r-md); background: var(--bg-elevated); border: 1px solid var(--bg-border)">
+                  <div style="min-width: 0">
+                    <p style="font-size: 13px; font-weight: 800; color: var(--text-primary); margin: 0">
+                      {{ playerName(reto.retador) }}
+                    </p>
+                    <p style="font-size: 12px; color: var(--text-secondary); margin: 2px 0 0; line-height: 1.35">
+                      {{ matchName(reto.partidoId) }} · {{ apuestaDetalle(reto) }}
+                    </p>
+                  </div>
+                  <div style="display: flex; gap: 8px; flex-shrink: 0">
+                    <button
+                      type="button"
+                      class="btn-especiales"
+                      [disabled]="accionApuestaId() === reto.id"
+                      (click)="aceptarApuesta(reto.id)"
+                    >
+                      Aceptar
+                    </button>
+                    <button
+                      type="button"
+                      class="btn-especiales"
+                      [disabled]="accionApuestaId() === reto.id"
+                      (click)="rechazarApuesta(reto.id)"
+                    >
+                      Rechazar
+                    </button>
+                  </div>
+                </div>
+              }
+            }
+          </div>
+        </div>
+
         <!-- ── Recordatorios push ───────────────────────────── -->
         <div style="margin-bottom: 20px">
           <h3 style="font-size: 15px; font-weight: 700; color: var(--text-primary); margin-bottom: 10px">Recordatorios</h3>
@@ -218,5 +274,15 @@
     <footer class="perfil-footer">
       <a routerLink="/admin" class="btn-admin">Panel admin</a>
     </footer>
+  }
+
+  @if (apuestaSheetOpen()) {
+    <app-apuesta-jornada-sheet
+        [userId]="userId()"
+        [players]="playersApuesta()"
+        [matches]="partidosApuesta()"
+        [matchJornadaKeys]="partidoJornadaKeys()"
+        (close)="apuestaSheetOpen.set(false)"
+      />
   }
 </div>

@@ -14,7 +14,7 @@ import {
   type DocumentReference,
   type Query as FirestoreQuery
 } from '@angular/fire/firestore';
-import { map, type Observable } from 'rxjs';
+import { combineLatest, map, of, shareReplay, type Observable } from 'rxjs';
 
 import {
   partidoPronosticoAbierto,
@@ -56,27 +56,75 @@ export class PronosticosService {
     this.firestore,
     'pronosticos'
   ) as CollectionReference<StoredPronostico>;
+  private readonly pronosticosCache$ = this.listenPronosticos(this.pronosticosCollection);
+  private readonly pronosticosConFraseCache$ = this.createPronosticosConFraseStream();
+  private readonly pronosticosPorUsuarioCache = new Map<string, Observable<readonly Pronostico[]>>();
+  private readonly pronosticosPorPartidoCache = new Map<string, Observable<readonly Pronostico[]>>();
+  private readonly pronosticosPorPartidosCache = new Map<string, Observable<readonly Pronostico[]>>();
 
   pronosticos$(): Observable<readonly Pronostico[]> {
-    return this.listenPronosticos(this.pronosticosCollection);
+    return this.pronosticosCache$;
+  }
+
+  pronosticosConFrase$(): Observable<readonly Pronostico[]> {
+    return this.pronosticosConFraseCache$;
   }
 
   pronosticosPorUsuario$(uid: string): Observable<readonly Pronostico[]> {
+    const cached = this.pronosticosPorUsuarioCache.get(uid);
+
+    if (cached !== undefined) {
+      return cached;
+    }
+
     const pronosticosQuery = query(
       this.pronosticosCollection,
       where('uid', '==', uid)
     );
 
-    return this.listenPronosticos(pronosticosQuery);
+    const stream$ = this.listenPronosticos(pronosticosQuery);
+    this.pronosticosPorUsuarioCache.set(uid, stream$);
+    return stream$;
   }
 
   pronosticosPorPartido$(partidoId: string): Observable<readonly Pronostico[]> {
+    const cached = this.pronosticosPorPartidoCache.get(partidoId);
+
+    if (cached !== undefined) {
+      return cached;
+    }
+
     const pronosticosQuery = query(
       this.pronosticosCollection,
       where('partidoId', '==', partidoId)
     );
 
-    return this.listenPronosticos(pronosticosQuery);
+    const stream$ = this.listenPronosticos(pronosticosQuery);
+    this.pronosticosPorPartidoCache.set(partidoId, stream$);
+    return stream$;
+  }
+
+  pronosticosPorPartidos$(partidoIds: readonly string[]): Observable<readonly Pronostico[]> {
+    const ids = uniqueStrings(partidoIds);
+
+    if (ids.length === 0) {
+      return of([] as readonly Pronostico[]);
+    }
+
+    const cacheKey = ids.join('|');
+    const cached = this.pronosticosPorPartidosCache.get(cacheKey);
+
+    if (cached !== undefined) {
+      return cached;
+    }
+
+    const stream$ = combineLatest(ids.map((id) => this.pronosticosPorPartido$(id))).pipe(
+      map((groups) => groups.flat()),
+      shareReplay({ bufferSize: 1, refCount: false })
+    );
+
+    this.pronosticosPorPartidosCache.set(cacheKey, stream$);
+    return stream$;
   }
 
   pronostico$(uid: string, partidoId: string): Observable<Pronostico | undefined> {
@@ -170,7 +218,16 @@ export class PronosticosService {
         .pipe(map((items) => items.map((item) => this.toPronostico(item)))),
       [] as readonly Pronostico[],
       'No se pudieron cargar los pronósticos. Nadie trajo la libreta.'
+    ).pipe(shareReplay({ bufferSize: 1, refCount: false }));
+  }
+
+  private createPronosticosConFraseStream(): Observable<readonly Pronostico[]> {
+    const pronosticosQuery = query(
+      this.pronosticosCollection,
+      where('frase', '>', '')
     );
+
+    return this.listenPronosticos(pronosticosQuery);
   }
 
   private partidoRef(partidoId: string): DocumentReference<Partido> {
@@ -234,4 +291,8 @@ function isFirebaseError(error: unknown): error is { code: string } {
     error !== null &&
     'code' in error &&
     typeof (error as { code: unknown }).code === 'string';
+}
+
+function uniqueStrings(values: readonly string[]): readonly string[] {
+  return [...new Set(values.filter((value) => value.trim() !== ''))].sort();
 }

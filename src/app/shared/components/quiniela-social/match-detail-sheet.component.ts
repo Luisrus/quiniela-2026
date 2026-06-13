@@ -1,5 +1,6 @@
 import { Component, EventEmitter, inject, Input, Output, signal } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
+import { toObservable, toSignal } from '@angular/core/rxjs-interop';
+import { of, switchMap } from 'rxjs';
 
 import { ComentariosService } from '../../../core/services/comentarios.service';
 import { PronosticosService } from '../../../core/services/pronosticos.service';
@@ -166,17 +167,64 @@ export class MatchDetailSheetComponent {
   private readonly usuarios = toSignal(this.usuariosService.usuarios$(), {
     initialValue: [] as const
   });
-  private readonly pronosticos = toSignal(this.pronosticosService.pronosticos$(), {
-    initialValue: [] as const
-  });
-  private readonly reacciones = toSignal(this.reaccionesService.reacciones$(), {
-    initialValue: [] as const
-  });
-  private readonly comentarios = toSignal(this.comentariosService.comentarios$(), {
-    initialValue: [] as const
-  });
+  private readonly matchSource = signal<UiMatch | null>(null);
+  private readonly pronosticos = toSignal(
+    toObservable(this.matchSource).pipe(
+      switchMap((match) =>
+        match === null
+          ? of([] as const)
+          : this.pronosticosService.pronosticosPorPartido$(match.id)
+      )
+    ),
+    {
+      initialValue: [] as const
+    }
+  );
+  private readonly reacciones = toSignal(
+    toObservable(this.matchSource).pipe(
+      switchMap((match) =>
+        match === null
+          ? of([] as const)
+          : this.pronosticosService.pronosticosPorPartido$(match.id).pipe(
+            switchMap((pronosticos) =>
+              this.reaccionesService.reaccionesPorTargets$(
+                'pronostico',
+                pronosticos.map((pronostico) => pronostico.id)
+              )
+            )
+          )
+      )
+    ),
+    {
+      initialValue: [] as const
+    }
+  );
+  private readonly comentarios = toSignal(
+    toObservable(this.matchSource).pipe(
+      switchMap((match) =>
+        match === null
+          ? of([] as const)
+          : this.comentariosService.comentariosPorPartido$(match.id)
+      )
+    ),
+    {
+      initialValue: [] as const
+    }
+  );
 
-  @Input({ required: true }) match!: UiMatch;
+  @Input({ required: true }) set match(value: UiMatch) {
+    this.matchSource.set(value);
+  }
+
+  get match(): UiMatch {
+    const match = this.matchSource();
+
+    if (match === null) {
+      throw new Error('MatchDetailSheetComponent requiere match.');
+    }
+
+    return match;
+  }
   @Input({ required: true }) userId!: string;
   @Input() set initialTab(value: UiSheetTab | null) {
     if (value !== null) {

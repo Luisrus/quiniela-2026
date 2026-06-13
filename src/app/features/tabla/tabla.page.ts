@@ -7,12 +7,10 @@ import type { ChartConfiguration, ChartOptions } from 'chart.js';
 import { AuthService } from '../../core/services/auth.service';
 import { MedallasService } from '../../core/services/medallas.service';
 import { PartidosService } from '../../core/services/partidos.service';
-import { PronosticosService } from '../../core/services/pronosticos.service';
 import { TorneosService } from '../../core/services/torneos.service';
 import { UsuariosService } from '../../core/services/usuarios.service';
 import { esTitular } from '../../core/utils/usuario-tipo.util';
 import type { Usuario } from '../../core/models/usuario.model';
-import { partidoFases } from '../../core/models/partido.model';
 import { AvatarComponent } from '../../shared/components/quiniela-ui/avatar.component';
 import { BadgeComponent } from '../../shared/components/quiniela-ui/badge.component';
 import { StreakCrownsComponent } from '../../shared/components/quiniela-ui/streak-crowns.component';
@@ -60,16 +58,12 @@ export class TablaPage {
   private readonly medallasService = inject(MedallasService);
   private readonly usuariosService = inject(UsuariosService);
   private readonly partidosService = inject(PartidosService);
-  private readonly pronosticosService = inject(PronosticosService);
   private readonly torneosService = inject(TorneosService);
 
   private readonly usuariosSource = toSignal(this.usuariosService.usuarios$(), {
     initialValue: undefined
   });
   private readonly partidosSource = toSignal(this.partidosService.partidos$(), {
-    initialValue: undefined
-  });
-  private readonly pronosticosSource = toSignal(this.pronosticosService.pronosticos$(), {
     initialValue: undefined
   });
   private readonly medallasRecientesSource = toSignal(this.medallasService.medallasRecientes$(), {
@@ -89,13 +83,12 @@ export class TablaPage {
   protected readonly isLoading = computed(() =>
     this.usuariosSource() === undefined || 
     this.partidosSource() === undefined ||
-    this.pronosticosSource() === undefined ||
     this.torneosSource() === undefined
   );
 
-  protected readonly misTorneos = computed(() => {
+  protected readonly torneosDisponibles = computed(() => {
     const torneos = this.torneosSource() ?? [];
-    return torneos.filter(t => t.participantes.includes(this.userId())).sort((a, b) => a.nombre.localeCompare(b.nombre));
+    return [...torneos].sort((a, b) => a.nombre.localeCompare(b.nombre));
   });
 
   protected readonly activeTorneo = computed(() => {
@@ -150,33 +143,13 @@ export class TablaPage {
     
     if (topUsuarios.length === 0) return undefined;
 
-    const partidos = this.partidosSource() ?? [];
-    const pronosticos = this.pronosticosSource() ?? [];
-
-    const active = this.activeTorneo();
-
-    const getJornadaKey = (partido: any) => {
-      const j = partido.jornada == null ? partido.fase : partido.jornada;
-      return `J${j}`;
-    };
+    const labels = [
+      ...new Set(topUsuarios.flatMap((player) =>
+        player.historialPuntos.map((entry) => entry.jornadaKey)
+      ))
+    ].sort(compareJornadaKeys);
 
     // Mapear partidoId -> jornadaKey para partidos finalizados y válidos para el torneo
-    const partidoAJornada = new Map<string, string>();
-    partidos.forEach(p => {
-      if (p.estado === 'finalizado') {
-        if (active) {
-          // Filtrar partidos por torneo
-          const matchFaseIndex = partidoFases.indexOf(p.fase);
-          const torneoFaseIndex = partidoFases.indexOf(active.faseInicio);
-          if (matchFaseIndex < torneoFaseIndex) return;
-        }
-        partidoAJornada.set(p.id, getJornadaKey(p));
-      }
-    });
-
-    const jornadasSet = new Set<string>(Array.from(partidoAJornada.values()));
-    const labels = Array.from(jornadasSet).sort();
-
     if (labels.length === 0) return undefined;
 
     const colors = [
@@ -185,21 +158,13 @@ export class TablaPage {
     ];
 
     let datasets = topUsuarios.map((p, index) => {
-      // Calcular los puntos dinamicamente agrupando por jornada
-      const puntosPorJornada = new Map<string, number>();
-      
-      const misPronosticos = pronosticos.filter(pr => pr.uid === p.id && pr.puntosGanados != null);
-      for (const pr of misPronosticos) {
-        const jornada = partidoAJornada.get(pr.partidoId);
-        if (jornada) {
-          puntosPorJornada.set(jornada, (puntosPorJornada.get(jornada) || 0) + pr.puntosGanados!);
-        }
-      }
+      const puntosPorJornada = new Map(
+        p.historialPuntos.map((entry) => [entry.jornadaKey, entry.puntos])
+      );
 
       let lastScore = 0;
       const data = labels.map(label => {
-        const delta = puntosPorJornada.get(label) || 0;
-        lastScore += delta;
+        lastScore = puntosPorJornada.get(label) ?? lastScore;
         return lastScore;
       });
 
@@ -317,8 +282,8 @@ export class TablaPage {
 
         if (torneoId) {
           pts = usuario.puntosPorTorneo?.[torneoId] ?? 0;
-          prov = pts; // no hay provisionales por torneo
-          delta = 0;
+          prov = usuario.puntosProvisionalesPorTorneo?.[torneoId] ?? pts;
+          delta = this.hasLiveMatch() ? Math.max(0, prov - pts) : 0;
         } else {
           delta = this.hasLiveMatch() ? Math.max(0, (prov ?? pts) - pts) : 0;
         }
@@ -348,7 +313,23 @@ export class TablaPage {
         liveTotal: item.liveTotal,
         liveDelta: item.liveDelta,
         esInvitado: item.usuario.tipo === 'invitado',
-        historialPuntos: item.usuario.historialPuntos || []
+        historialPuntos: torneoId
+          ? item.usuario.historialPuntosPorTorneo?.[torneoId] ?? []
+          : item.usuario.historialPuntos || []
       }));
   }
+}
+
+function compareJornadaKeys(left: string, right: string): number {
+  return jornadaSortValue(left) - jornadaSortValue(right) || left.localeCompare(right, 'es');
+}
+
+function jornadaSortValue(value: string): number {
+  const match = /^J(\d+)$/.exec(value);
+
+  if (match === null) {
+    return Number.MAX_SAFE_INTEGER;
+  }
+
+  return Number(match[1]);
 }

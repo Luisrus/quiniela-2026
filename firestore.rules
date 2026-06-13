@@ -476,25 +476,50 @@ service cloud.firestore {
     match /apuestasDia/{docId} {
       allow read: if signedIn();
       allow create: if signedIn() &&
-        docId == request.auth.uid + '_' + request.resource.data.jornadaKey &&
-        request.resource.data.keys().hasAll(['id', 'jornadaKey', 'retador', 'retado', 'resultado']) &&
+        docId == request.auth.uid + '_' + request.resource.data.partidoId + '_' + request.resource.data.retado &&
+        request.resource.data.keys().hasOnly([
+          'id',
+          'jornadaKey',
+          'partidoId',
+          'retador',
+          'retado',
+          'porUnPuntoReal',
+          'apuestaTexto',
+          'resultado'
+        ]) &&
+        request.resource.data.keys().hasAll([
+          'id',
+          'jornadaKey',
+          'partidoId',
+          'retador',
+          'retado',
+          'porUnPuntoReal',
+          'resultado'
+        ]) &&
+        request.resource.data.id == docId &&
         request.resource.data.retador == request.auth.uid &&
         request.resource.data.retado != request.auth.uid &&
-        request.resource.data.resultado == 'pendiente' &&
+        request.resource.data.resultado == 'esperando_aceptacion' &&
         isText(request.resource.data.jornadaKey) &&
-        isText(request.resource.data.retado);
-      // El usuario puede cambiar solo el campo 'retado' (antes de que empiece la jornada).
-      // El script/admin puede actualizar 'resultado'.
+        isText(request.resource.data.partidoId) &&
+        partidoAbierto(request.resource.data.partidoId) &&
+        isText(request.resource.data.retado) &&
+        request.resource.data.porUnPuntoReal is bool &&
+        (!request.resource.data.keys().hasAny(['apuestaTexto']) || request.resource.data.apuestaTexto is string);
       allow update: if
         (signedIn() &&
-          resource.data.retador == request.auth.uid &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['retado']) &&
-          request.resource.data.retado != request.auth.uid &&
-          isText(request.resource.data.retado))
+          resource.data.retado == request.auth.uid &&
+          resource.data.resultado == 'esperando_aceptacion' &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['resultado']) &&
+          (request.resource.data.resultado == 'pendiente' || request.resource.data.resultado == 'rechazada'))
         ||
         (isAdmin() &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['resultado']) &&
-          (request.resource.data.resultado == 'ganada' || request.resource.data.resultado == 'perdida'));
+          (
+            request.resource.data.resultado == 'ganada' ||
+            request.resource.data.resultado == 'perdida' ||
+            request.resource.data.resultado == 'empatada'
+          ));
       allow delete: if false;
     }
 

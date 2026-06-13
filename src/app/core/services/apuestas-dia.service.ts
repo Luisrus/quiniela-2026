@@ -14,13 +14,20 @@ import { map, of, type Observable } from 'rxjs';
 
 import {
   buildApuestaDiaId,
-  type ApuestaDia,
-  type ApuestaDiaResultado
+  type ApuestaDia
 } from '../models/apuesta-dia.model';
 import { AuthService } from './auth.service';
 import { FirestoreErrorService } from './firestore-error.service';
 import { ToastService } from './toast.service';
 import { UsuariosService } from './usuarios.service';
+
+export interface GuardarApuestaPartidoInput {
+  readonly partidoId: string;
+  readonly jornadaKey: string;
+  readonly retadoUid: string;
+  readonly porUnPuntoReal: boolean;
+  readonly apuestaTexto?: string;
+}
 
 @Injectable({
   providedIn: 'root'
@@ -37,7 +44,6 @@ export class ApuestasDiaService {
     'apuestasDia'
   ) as CollectionReference<ApuestaDia>;
 
-  /** Todas las apuestas de una jornada (para el feed social). */
   apuestasPorJornada$(jornadaKey: string): Observable<readonly ApuestaDia[]> {
     const q = query(this.apuestasCollection, where('jornadaKey', '==', jornadaKey));
 
@@ -48,8 +54,7 @@ export class ApuestasDiaService {
     );
   }
 
-  /** Apuesta del usuario autenticado en la jornada dada. */
-  miApuesta$(jornadaKey: string): Observable<ApuestaDia | undefined> {
+  miApuestaPorPartido$(partidoId: string): Observable<ApuestaDia | undefined> {
     const uid = this.auth.userProfile()?.uid;
 
     if (!uid) {
@@ -58,7 +63,7 @@ export class ApuestasDiaService {
 
     const q = query(
       this.apuestasCollection,
-      where('jornadaKey', '==', jornadaKey),
+      where('partidoId', '==', partidoId),
       where('retador', '==', uid)
     );
 
@@ -71,17 +76,19 @@ export class ApuestasDiaService {
     );
   }
 
-  /** Retos recibidos por el usuario autenticado en la jornada dada que están esperando aceptación. */
-  misRetosRecibidos$(jornadaKey: string): Observable<readonly ApuestaDia[]> {
+  misRetosRecibidos$(): Observable<readonly ApuestaDia[]> {
     const uid = this.auth.userProfile()?.uid;
 
     if (!uid) {
       return of([]);
     }
 
+    return this.retosRecibidosPorUid$(uid);
+  }
+
+  retosRecibidosPorUid$(uid: string): Observable<readonly ApuestaDia[]> {
     const q = query(
       this.apuestasCollection,
-      where('jornadaKey', '==', jornadaKey),
       where('retado', '==', uid),
       where('resultado', '==', 'esperando_aceptacion')
     );
@@ -93,31 +100,31 @@ export class ApuestasDiaService {
     );
   }
 
-  /** Crea o actualiza la apuesta del usuario para la jornada dada. */
-  async guardar(jornadaKey: string, retadoUid: string, porUnPuntoReal: boolean, apuestaTexto: string = ''): Promise<void> {
+  async guardar(input: GuardarApuestaPartidoInput): Promise<void> {
     const uid = this.requireUid();
 
-    if (uid === retadoUid) {
+    if (uid === input.retadoUid) {
       this.toasts.error('No puedes apostarte a ti mismo, primo.');
       return;
     }
 
     const retadorEsTitular = await this.usuarios.esTitularUid(uid);
-    const retadoEsTitular = await this.usuarios.esTitularUid(retadoUid);
+    const retadoEsTitular = await this.usuarios.esTitularUid(input.retadoUid);
 
     if (!retadorEsTitular || !retadoEsTitular) {
-      this.toasts.error('Las apuestas del día son solo entre titulares.');
+      this.toasts.error('Las apuestas son solo entre titulares.');
       return;
     }
 
-    const id = buildApuestaDiaId(uid, jornadaKey);
+    const id = buildApuestaDiaId(uid, input.partidoId, input.retadoUid);
     const data: ApuestaDia = {
       id,
-      jornadaKey,
+      jornadaKey: input.jornadaKey,
+      partidoId: input.partidoId,
       retador: uid,
-      retado: retadoUid,
-      porUnPuntoReal,
-      apuestaTexto,
+      retado: input.retadoUid,
+      porUnPuntoReal: input.porUnPuntoReal,
+      apuestaTexto: input.apuestaTexto ?? '',
       resultado: 'esperando_aceptacion'
     };
 
@@ -127,9 +134,9 @@ export class ApuestasDiaService {
         data,
         { merge: false }
       );
-      this.toasts.success('¡Apuesta guardada! Que gane el mejor 🎲');
+      this.toasts.success('Apuesta enviada. Falta que acepte el reto.');
     } catch (error: unknown) {
-      this.errors.report('No se pudo guardar la apuesta. Se cayó el dado.', error);
+      this.errors.report('No se pudo guardar la apuesta.', error);
       throw error;
     }
   }
@@ -141,7 +148,7 @@ export class ApuestasDiaService {
         { resultado: 'pendiente' } as Partial<ApuestaDia>,
         { merge: true }
       );
-      this.toasts.success('¡Reto aceptado! Que gane el mejor.');
+      this.toasts.success('Reto aceptado.');
     } catch (error: unknown) {
       this.errors.report('No se pudo aceptar el reto.', error);
       throw error;

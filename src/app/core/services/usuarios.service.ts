@@ -14,7 +14,7 @@ import {
   type DocumentReference
 } from '@angular/fire/firestore';
 import type { User as FirebaseUser } from '@angular/fire/auth';
-import type { Observable } from 'rxjs';
+import { shareReplay, type Observable } from 'rxjs';
 
 import type { UserProfile } from '../models/user-profile.model';
 import type { Usuario, UsuarioProfileUpdate } from '../models/usuario.model';
@@ -33,8 +33,13 @@ export class UsuariosService {
     this.firestore,
     'usuarios'
   ) as CollectionReference<Usuario>;
+  private readonly usuariosCache$ = this.createUsuariosStream();
 
   usuarios$(): Observable<readonly Usuario[]> {
+    return this.usuariosCache$;
+  }
+
+  private createUsuariosStream(): Observable<readonly Usuario[]> {
     const usuariosQuery = query(
       this.usuariosCollection,
       orderBy('puntos', 'desc')
@@ -44,7 +49,7 @@ export class UsuariosService {
       collectionData(usuariosQuery, { idField: 'uid' }) as Observable<readonly Usuario[]>,
       [] as readonly Usuario[],
       'No se pudo cargar la tabla. El marcador se fue a revisión.'
-    );
+    ).pipe(shareReplay({ bufferSize: 1, refCount: false }));
   }
 
   usuario$(uid: string): Observable<Usuario | undefined> {

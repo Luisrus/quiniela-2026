@@ -1,10 +1,12 @@
 import { computed, Component, effect, inject, signal } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
+import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { Router, RouterLink } from '@angular/router';
+import { of, switchMap } from 'rxjs';
 
 import { resolveCrestUrl } from '../../core/config/equipos-crest.config';
 import { EQUIPOS_MUNDIALISTAS, type EquipoMundialista } from '../../core/config/torneo.config';
 import { AuthService } from '../../core/services/auth.service';
+import { ApuestasDiaService } from '../../core/services/apuestas-dia.service';
 import { esTitular } from '../../core/utils/usuario-tipo.util';
 import { PartidosService } from '../../core/services/partidos.service';
 import { PronosticosService } from '../../core/services/pronosticos.service';
@@ -16,7 +18,9 @@ import {
   type PremioEspecialMeta,
   type PronosticoEspecialTipo
 } from '../../core/models/pronostico-especial.model';
+import type { ApuestaDia } from '../../core/models/apuesta-dia.model';
 import type { Pronostico } from '../../core/models/pronostico.model';
+import { ApuestaJornadaSheetComponent } from '../../shared/components/quiniela-social/apuesta-jornada-sheet.component';
 import { AvatarComponent } from '../../shared/components/quiniela-ui/avatar.component';
 import { EmptyStateComponent } from '../../shared/components/quiniela-ui/empty-state.component';
 import { SkeletonCardComponent } from '../../shared/components/quiniela-ui/skeleton-card.component';
@@ -45,6 +49,7 @@ interface OracleBadge {
   standalone: true,
   imports: [
     AvatarComponent,
+    ApuestaJornadaSheetComponent,
     EmptyStateComponent,
     SkeletonCardComponent,
     StatBlockComponent,
@@ -58,6 +63,7 @@ interface OracleBadge {
 export class PerfilPage {
   private readonly auth = inject(AuthService);
   private readonly usuariosService = inject(UsuariosService);
+  private readonly apuestasService = inject(ApuestasDiaService);
   private readonly partidosService = inject(PartidosService);
   private readonly pronosticosService = inject(PronosticosService);
   private readonly especialesService = inject(PronosticosEspecialesService);
@@ -70,23 +76,41 @@ export class PerfilPage {
   private readonly partidosSource = toSignal(this.partidosService.partidos$(), {
     initialValue: undefined
   });
-  private readonly pronosticosSource = toSignal(this.pronosticosService.pronosticos$(), {
-    initialValue: undefined
-  });
   private readonly especialesSource = toSignal(this.especialesService.misPronosticosEspeciales$(), {
     initialValue: undefined
   });
   private readonly configTorneoSource = toSignal(this.especialesService.configTorneo$(), {
     initialValue: undefined
   });
-
   protected readonly userId = computed(() => this.auth.userProfile()?.uid ?? '');
   protected readonly equipos: readonly EquipoMundialista[] = EQUIPOS_MUNDIALISTAS;
   protected readonly savingEquipo = signal(false);
   protected readonly guardandoNotificaciones = signal(false);
   protected readonly cerrandoSesion = signal(false);
+  protected readonly apuestaSheetOpen = signal(false);
+  protected readonly accionApuestaId = signal<string | null>(null);
   protected readonly notificacionesEstado = signal<MessagingEstado>('pendiente');
   protected readonly skeletonRows: readonly number[] = [1, 2, 3];
+  private readonly pronosticosSource = toSignal(
+    toObservable(this.userId).pipe(
+      switchMap((uid) =>
+        uid === ''
+          ? of(undefined)
+          : this.pronosticosService.pronosticosPorUsuario$(uid)
+      )
+    ),
+    { initialValue: undefined }
+  );
+  private readonly retosRecibidosSource = toSignal(
+    toObservable(this.userId).pipe(
+      switchMap((uid) =>
+        uid === ''
+          ? of([] as readonly ApuestaDia[])
+          : this.apuestasService.retosRecibidosPorUid$(uid)
+      )
+    ),
+    { initialValue: [] as readonly ApuestaDia[] }
+  );
 
   constructor() {
     this.notificacionesEstado.set(this.messagingService.estadoActual());
@@ -132,6 +156,12 @@ export class PerfilPage {
       .map((usuario, index) => toUiPlayer(usuario, index + 1))
   );
 
+  protected readonly playersApuesta = computed(() =>
+    (this.usuariosSource() ?? [])
+      .filter((usuario) => esTitular(usuario.tipo))
+      .map((usuario, index) => toUiPlayer(usuario, index + 1))
+  );
+
   protected readonly player = computed(() =>
     this.players().find((item) => item.id === this.userId()) ?? null
   );
@@ -156,6 +186,26 @@ export class PerfilPage {
       .filter((partido) => partido.estado === 'finalizado')
       .map((partido) => toUiMatch(partido))
   );
+
+  protected readonly partidosApuesta = computed(() =>
+    (this.partidosSource() ?? [])
+      .filter((partido) => partido.estado === 'programado')
+      .map((partido) => toUiMatch(partido))
+  );
+
+  protected readonly partidoJornadaKeys = computed<Readonly<Record<string, string>>>(() => {
+    const keys: Record<string, string> = {};
+
+    for (const partido of this.partidosSource() ?? []) {
+      keys[partido.id] = partido.fase === 'grupos' && typeof partido.jornada === 'number'
+        ? `J${partido.jornada}`
+        : partido.fase;
+    }
+
+    return keys;
+  });
+
+  protected readonly retosRecibidos = computed(() => this.retosRecibidosSource());
 
   protected readonly history = computed<readonly ProfileHistoryItem[]>(() => {
     const userId = this.userId();
@@ -247,6 +297,45 @@ export class PerfilPage {
       : points === 1
         ? 'var(--pt-correct)'
         : 'var(--pt-miss)';
+  }
+
+  protected matchName(partidoId: string): string {
+    const match = (this.partidosSource() ?? [])
+      .find((partido) => partido.id === partidoId);
+
+    if (match === undefined) {
+      return 'Partido pendiente';
+    }
+
+    return `${match.equipoLocal} vs ${match.equipoVisitante}`;
+  }
+
+  protected playerName(uid: string): string {
+    return this.players().find((player) => player.id === uid)?.name ?? uid;
+  }
+
+  protected apuestaDetalle(apuesta: ApuestaDia): string {
+    return apuesta.porUnPuntoReal ? '1 punto real' : apuesta.apuestaTexto ?? 'apuesta social';
+  }
+
+  protected async aceptarApuesta(apuestaId: string): Promise<void> {
+    this.accionApuestaId.set(apuestaId);
+
+    try {
+      await this.apuestasService.aceptarApuesta(apuestaId);
+    } finally {
+      this.accionApuestaId.set(null);
+    }
+  }
+
+  protected async rechazarApuesta(apuestaId: string): Promise<void> {
+    this.accionApuestaId.set(apuestaId);
+
+    try {
+      await this.apuestasService.rechazarApuesta(apuestaId);
+    } finally {
+      this.accionApuestaId.set(null);
+    }
   }
 
   protected irAEspeciales(): void {

@@ -13,7 +13,7 @@ import {
   type DocumentReference,
   type Query as FirestoreQuery
 } from '@angular/fire/firestore';
-import { map, type Observable } from 'rxjs';
+import { combineLatest, map, of, shareReplay, type Observable } from 'rxjs';
 
 import {
   buildReaccionId,
@@ -48,31 +48,79 @@ export class ReaccionesService {
     this.firestore,
     'reacciones'
   ) as CollectionReference<StoredReaccion>;
+  private readonly reaccionesCache$ = this.listenReacciones(this.reaccionesCollection);
+  private readonly reaccionesPorTargetCache = new Map<string, Observable<readonly Reaccion[]>>();
+  private readonly reaccionesPorUsuarioCache = new Map<string, Observable<readonly Reaccion[]>>();
+  private readonly reaccionesPorTargetsCache = new Map<string, Observable<readonly Reaccion[]>>();
 
   reacciones$(): Observable<readonly Reaccion[]> {
-    return this.listenReacciones(this.reaccionesCollection);
+    return this.reaccionesCache$;
   }
 
   reaccionesPorTarget$(
     targetTipo: ReaccionTargetTipo,
     targetId: string
   ): Observable<readonly Reaccion[]> {
+    const cacheKey = `${targetTipo}:${targetId}`;
+    const cached = this.reaccionesPorTargetCache.get(cacheKey);
+
+    if (cached !== undefined) {
+      return cached;
+    }
+
     const reaccionesQuery = query(
       this.reaccionesCollection,
       where('targetTipo', '==', targetTipo),
       where('targetId', '==', targetId)
     );
 
-    return this.listenReacciones(reaccionesQuery);
+    const stream$ = this.listenReacciones(reaccionesQuery);
+    this.reaccionesPorTargetCache.set(cacheKey, stream$);
+    return stream$;
+  }
+
+  reaccionesPorTargets$(
+    targetTipo: ReaccionTargetTipo,
+    targetIds: readonly string[]
+  ): Observable<readonly Reaccion[]> {
+    const ids = uniqueStrings(targetIds);
+
+    if (ids.length === 0) {
+      return of([] as readonly Reaccion[]);
+    }
+
+    const cacheKey = `${targetTipo}:${ids.join('|')}`;
+    const cached = this.reaccionesPorTargetsCache.get(cacheKey);
+
+    if (cached !== undefined) {
+      return cached;
+    }
+
+    const streams = ids.map((targetId) => this.reaccionesPorTarget$(targetTipo, targetId));
+    const stream$ = combineLatest(streams).pipe(
+      map((groups) => groups.flat()),
+      shareReplay({ bufferSize: 1, refCount: false })
+    );
+
+    this.reaccionesPorTargetsCache.set(cacheKey, stream$);
+    return stream$;
   }
 
   reaccionesPorUsuario$(uid: string): Observable<readonly Reaccion[]> {
+    const cached = this.reaccionesPorUsuarioCache.get(uid);
+
+    if (cached !== undefined) {
+      return cached;
+    }
+
     const reaccionesQuery = query(
       this.reaccionesCollection,
       where('uid', '==', uid)
     );
 
-    return this.listenReacciones(reaccionesQuery);
+    const stream$ = this.listenReacciones(reaccionesQuery);
+    this.reaccionesPorUsuarioCache.set(uid, stream$);
+    return stream$;
   }
 
   miReaccion$(
@@ -126,7 +174,7 @@ export class ReaccionesService {
         .pipe(map((items) => items.map((item) => this.toReaccion(item)))),
       [] as readonly Reaccion[],
       'No se pudieron cargar las reacciones. La ola se quedó sentada.'
-    );
+    ).pipe(shareReplay({ bufferSize: 1, refCount: false }));
   }
 
   private reaccionRef(
@@ -157,4 +205,8 @@ export class ReaccionesService {
 
     return profile.uid;
   }
+}
+
+function uniqueStrings(values: readonly string[]): readonly string[] {
+  return [...new Set(values.filter((value) => value.trim() !== ''))].sort();
 }

@@ -14,7 +14,7 @@ import {
   type DocumentReference,
   type FieldValue
 } from '@angular/fire/firestore';
-import type { Observable } from 'rxjs';
+import { shareReplay, type Observable } from 'rxjs';
 
 import type { Comentario, ComentarioInput } from '../models/comentario.model';
 import { AuthService } from './auth.service';
@@ -50,32 +50,49 @@ export class ComentariosService {
     this.firestore,
     'comentarios'
   ) as CollectionReference<StoredComentario>;
+  private readonly comentariosCache$ = this.createComentariosStream();
+  private readonly comentariosPorPartidoCache = new Map<string, Observable<readonly Comentario[]>>();
 
   comentarios$(): Observable<readonly Comentario[]> {
+    return this.comentariosCache$;
+  }
+
+  private createComentariosStream(): Observable<readonly Comentario[]> {
     const comentariosQuery = query(
       this.comentariosCollection,
       orderBy('creadoEn', 'asc')
     );
 
-    return this.errors.handleStream(
+    const stream$ = this.errors.handleStream(
       collectionData(comentariosQuery, { idField: 'id' }) as Observable<readonly Comentario[]>,
       [] as readonly Comentario[],
       'No se pudieron cargar los comentarios. El chat se fue al vestidor.'
-    );
+    ).pipe(shareReplay({ bufferSize: 1, refCount: false }));
+
+    return stream$;
   }
 
   comentariosPorPartido$(partidoId: string): Observable<readonly Comentario[]> {
+    const cached = this.comentariosPorPartidoCache.get(partidoId);
+
+    if (cached !== undefined) {
+      return cached;
+    }
+
     const comentariosQuery = query(
       this.comentariosCollection,
       where('partidoId', '==', partidoId),
       orderBy('creadoEn', 'asc')
     );
 
-    return this.errors.handleStream(
+    const stream$ = this.errors.handleStream(
       collectionData(comentariosQuery, { idField: 'id' }) as Observable<readonly Comentario[]>,
       [] as readonly Comentario[],
       'No se pudieron cargar los comentarios del partido. Silencio incómodo.'
-    );
+    ).pipe(shareReplay({ bufferSize: 1, refCount: false }));
+
+    this.comentariosPorPartidoCache.set(partidoId, stream$);
+    return stream$;
   }
 
   async crearComentario(input: ComentarioInput): Promise<string> {

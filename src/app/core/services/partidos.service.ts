@@ -11,7 +11,7 @@ import {
   type CollectionReference,
   type DocumentReference
 } from '@angular/fire/firestore';
-import type { Observable } from 'rxjs';
+import { shareReplay, type Observable } from 'rxjs';
 
 import type { Partido, PartidoFase } from '../models/partido.model';
 import { FirestoreErrorService } from './firestore-error.service';
@@ -26,8 +26,13 @@ export class PartidosService {
     this.firestore,
     'partidos'
   ) as CollectionReference<Partido>;
+  private readonly partidosCache$ = this.createPartidosStream();
 
   partidos$(): Observable<readonly Partido[]> {
+    return this.partidosCache$;
+  }
+
+  private createPartidosStream(): Observable<readonly Partido[]> {
     const partidosQuery = query(
       this.partidosCollection,
       orderBy('fechaInicio', 'asc')
@@ -37,7 +42,7 @@ export class PartidosService {
       collectionData(partidosQuery, { idField: 'id' }) as Observable<readonly Partido[]>,
       [] as readonly Partido[],
       'No se pudieron cargar los partidos. La pelota no llegó.'
-    );
+    ).pipe(shareReplay({ bufferSize: 1, refCount: false }));
   }
 
   partidosPorFase$(fase: PartidoFase): Observable<readonly Partido[]> {

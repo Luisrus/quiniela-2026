@@ -1,5 +1,6 @@
 import { computed, Component, inject } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
+import { toObservable, toSignal } from '@angular/core/rxjs-interop';
+import { of, switchMap } from 'rxjs';
 
 import { buildPronosticoId } from '../../core/models/pronostico.model';
 import { AuthService } from '../../core/services/auth.service';
@@ -43,10 +44,7 @@ export class FeedPage {
   private readonly partidosSource = toSignal(this.partidosService.partidos$(), {
     initialValue: undefined
   });
-  private readonly pronosticosSource = toSignal(this.pronosticosService.pronosticos$(), {
-    initialValue: undefined
-  });
-  private readonly reaccionesSource = toSignal(this.reaccionesService.reacciones$(), {
+  private readonly pronosticosSource = toSignal(this.pronosticosService.pronosticosConFrase$(), {
     initialValue: undefined
   });
   private readonly usuariosSource = toSignal(this.usuariosService.usuarios$(), {
@@ -101,6 +99,20 @@ export class FeedPage {
         return left.result.player.name.localeCompare(right.result.player.name, 'es');
       });
   });
+
+  private readonly feedTargetIds = computed(() =>
+    this.feedItems().flatMap((item) => item.result.targetId ?? [])
+  );
+  private readonly reaccionesSource = toSignal(
+    toObservable(this.feedTargetIds).pipe(
+      switchMap((targetIds) =>
+        targetIds.length === 0
+          ? of([] as const)
+          : this.reaccionesService.reaccionesPorTargets$('pronostico', targetIds)
+      )
+    ),
+    { initialValue: [] as const }
+  );
 
   protected reactionCountsFor(item: UiFeedItem): Readonly<Record<string, number>> {
     const targetId = item.result.targetId ?? '';

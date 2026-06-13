@@ -3,10 +3,12 @@ export const apuestaDiaResultados = ['esperando_aceptacion', 'rechazada', 'pendi
 export type ApuestaDiaResultado = (typeof apuestaDiaResultados)[number];
 
 export interface ApuestaDia {
-  /** `${retadorUid}_${jornadaKey}` */
+  /** `${retadorUid}_${partidoId}_${retadoUid}` */
   readonly id: string;
   /** Clave de jornada, p.ej. "J1", "J2", "J3". Solo grupos. */
   readonly jornadaKey: string;
+  /** Partido especifico que define la apuesta. */
+  readonly partidoId: string;
   /** UID del usuario que hizo la apuesta. */
   readonly retador: string;
   /** UID del usuario al que le apuesta. */
@@ -19,6 +21,10 @@ export interface ApuestaDia {
   readonly resultado: ApuestaDiaResultado;
 }
 
-export function buildApuestaDiaId(retadorUid: string, jornadaKey: string): string {
-  return `${retadorUid}_${jornadaKey}`;
+export function buildApuestaDiaId(
+  retadorUid: string,
+  partidoId: string,
+  retadoUid: string
+): string {
+  return `${retadorUid}_${partidoId}_${retadoUid}`;
 }

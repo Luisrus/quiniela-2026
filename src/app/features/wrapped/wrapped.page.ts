@@ -1,6 +1,7 @@
 import { computed, Component, inject, signal } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
+import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
+import { of, switchMap } from 'rxjs';
 
 import { resolveCrestUrl } from '../../core/config/equipos-crest.config';
 import {
@@ -57,9 +58,6 @@ export class WrappedPage {
   private readonly partidosSource = toSignal(this.partidosService.partidos$(), {
     initialValue: undefined
   });
-  private readonly pronosticosSource = toSignal(this.pronosticosService.pronosticos$(), {
-    initialValue: undefined
-  });
   private readonly especialesSource = toSignal(this.especialesService.misPronosticosEspeciales$(), {
     initialValue: undefined
   });
@@ -68,6 +66,16 @@ export class WrappedPage {
   protected readonly skeletonRows: readonly number[] = [1, 2, 3];
 
   protected readonly userId = computed(() => this.auth.userProfile()?.uid ?? '');
+  private readonly pronosticosSource = toSignal(
+    toObservable(this.userId).pipe(
+      switchMap((uid) =>
+        uid === ''
+          ? of(undefined)
+          : this.pronosticosService.pronosticosPorUsuario$(uid)
+      )
+    ),
+    { initialValue: undefined }
+  );
 
   protected readonly isLoading = computed(() =>
     this.usuariosSource() === undefined ||
