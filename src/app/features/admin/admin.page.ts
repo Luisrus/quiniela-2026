@@ -1,6 +1,6 @@
 import { computed, Component, effect, inject, signal, untracked } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
-import { combineLatest, filter, of, switchMap } from 'rxjs';
+import { combineLatest, of, switchMap } from 'rxjs';
 import { UpperCasePipe } from '@angular/common';
 
 import type { AdminJugadorUpdate } from '../../core/models/admin.model';
@@ -79,35 +79,21 @@ export class AdminPage {
   protected readonly activeTab = signal<AdminTab>('resultados');
   protected readonly selectedPartidoId = signal('');
   protected readonly selectedJugadorUid = signal('');
-  
-  private readonly activeTab$ = toObservable(this.activeTab);
 
-  private readonly partidosSource = toSignal(
-    this.activeTab$.pipe(
-      filter((tab) => tab === 'resultados' || tab === 'pronosticos'),
-      switchMap(() => this.partidosService.partidos$())
-    ),
-    { initialValue: undefined }
-  );
+  private readonly partidosSource = toSignal(this.partidosService.partidos$(), {
+    initialValue: undefined
+  });
 
-  private readonly usuariosSource = toSignal(
-    this.activeTab$.pipe(
-      filter((tab) => tab === 'jugadores' || tab === 'pronosticos' || tab === 'torneos'),
-      switchMap(() => this.usuariosService.usuarios$())
-    ),
-    { initialValue: undefined }
-  );
+  private readonly usuariosSource = toSignal(this.usuariosService.usuarios$(), {
+    initialValue: undefined
+  });
 
-  private readonly torneosSource = toSignal(
-    this.activeTab$.pipe(
-      filter((tab) => tab === 'torneos'),
-      switchMap(() => this.torneosService.torneos$())
-    ),
-    { initialValue: undefined }
-  );
+  private readonly torneosSource = toSignal(this.torneosService.torneos$(), {
+    initialValue: undefined
+  });
 
   private readonly pronosticoSeleccionado$ = combineLatest([
-    this.activeTab$,
+    toObservable(this.activeTab),
     toObservable(this.selectedJugadorUid),
     toObservable(this.selectedPartidoId)
   ]).pipe(
