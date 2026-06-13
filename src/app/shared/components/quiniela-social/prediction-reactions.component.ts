@@ -3,6 +3,7 @@ import { Component, EventEmitter, Input, Output } from '@angular/core';
 @Component({
   selector: 'app-prediction-reactions',
   standalone: true,
+  host: { style: 'display: block' },
   template: `
     <div style="display: flex; gap: 5px; flex-wrap: wrap">
       @for (emoji of emojis; track emoji) {
