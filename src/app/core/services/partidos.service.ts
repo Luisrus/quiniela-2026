@@ -101,6 +101,15 @@ export class PartidosService {
     );
   }
 
+  /** Todos los partidos con fechaInicio en los próximos 7 días (cualquier estado). */
+  partidosDeLaSemana$(): Observable<readonly Partido[]> {
+    const cacheKey = `semana_${weekRangeKey(todayDayKey())}`;
+
+    return this.getOrCreatePartidosPorEstado(cacheKey, () =>
+      this.listenPartidosQuery(this.partidosSemanaQuery())
+    );
+  }
+
   /** Jugados: todos los finalizados antes de octavos; desde octavos solo fases eliminatorias. */
   partidosJugados$(): Observable<readonly Partido[]> {
     if (this.partidosJugadosCache$ === null) {
@@ -349,6 +358,17 @@ export class PartidosService {
       where('fechaInicio', '>=', Timestamp.fromDate(start)),
       where('fechaInicio', '<', Timestamp.fromDate(end)),
       orderBy('fechaInicio', 'asc')
+    );
+  }
+
+  private partidosSemanaQuery(): FirestoreQuery<Partido> {
+    const { start, end } = weekDateBounds(todayDayKey());
+
+    return query(
+      this.partidosCollection,
+      where('fechaInicio', '>=', Timestamp.fromDate(start)),
+      where('fechaInicio', '<', Timestamp.fromDate(end)),
+      orderBy('fechaInicio', 'desc')
     );
   }
 }

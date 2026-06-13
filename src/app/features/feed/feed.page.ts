@@ -42,31 +42,24 @@ export class FeedPage {
   private readonly reaccionesService = inject(ReaccionesService);
   private readonly usuariosService = inject(UsuariosService);
 
-  private readonly pronosticosSource = toSignal(this.pronosticosService.pronosticosConFrase$(), {
+  private readonly partidosSource = toSignal(this.partidosService.partidosDeLaSemana$(), {
     initialValue: undefined
   });
   private readonly partidoIds = computed(() =>
-    uniqueStrings((this.pronosticosSource() ?? []).map((pronostico) => pronostico.partidoId))
+    uniqueStrings((this.partidosSource() ?? []).map((partido) => partido.id))
   );
-  private readonly partidosLoadKey = computed(() => {
-    if (this.pronosticosSource() === undefined) {
-      return undefined;
-    }
-
-    return this.partidoIds().join('|');
-  });
-  private readonly partidosSource = toSignal(
-    toObservable(this.partidosLoadKey).pipe(
-      switchMap((loadKey) => {
-        if (loadKey === undefined) {
+  private readonly pronosticosSource = toSignal(
+    toObservable(this.partidoIds).pipe(
+      switchMap((ids) => {
+        if (this.partidosSource() === undefined) {
           return of(undefined);
         }
 
-        if (loadKey === '') {
+        if (ids.length === 0) {
           return of([] as const);
         }
 
-        return this.partidosService.partidosPorIds$(loadKey.split('|'));
+        return this.pronosticosService.pronosticosPorPartidos$(ids);
       })
     ),
     { initialValue: undefined }
