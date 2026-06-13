@@ -199,6 +199,12 @@ h1 {
   transform: translateY(1px);
 }
 
+.secondary-button {
+  border: 1px solid var(--bg-border);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
 .admin-picker,
 .admin-invite-form {
   gap: 10px;

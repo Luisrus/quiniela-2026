@@ -369,6 +369,29 @@ export class AdminPage {
     }
   }
 
+  protected async guardarPronosticoSinDatos(): Promise<void> {
+    const partidoId = this.selectedPartidoId();
+    const uid = this.selectedJugadorUid();
+
+    if (partidoId === '' || uid === '') {
+      return;
+    }
+
+    this.guardandoPronostico.set(true);
+
+    try {
+      await this.adminService.guardarPronostico({
+        uid,
+        partidoId,
+        golesLocal: 0,
+        golesVisitante: 0,
+        sinDatos: true
+      });
+    } finally {
+      this.guardandoPronostico.set(false);
+    }
+  }
+
   protected async guardarJugador(usuario: Usuario): Promise<void> {
     const draft = this.jugadorDraftFor(usuario);
     this.savingJugadorUid.set(usuario.uid);

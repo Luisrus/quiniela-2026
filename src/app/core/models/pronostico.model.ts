@@ -7,6 +7,7 @@ export interface Pronostico {
   readonly golesLocal: number;
   readonly golesVisitante: number;
   readonly frase?: string;
+  readonly sinDatos?: boolean;
   readonly puntosGanados: number | null;
   readonly puntosProvisionales?: number | null;
 }

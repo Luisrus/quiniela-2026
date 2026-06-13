@@ -97,6 +97,33 @@ service cloud.firestore {
         isOptionalFrase(data.get('frase', null));
     }
 
+    function validPronosticoAdminCreate(data) {
+      return data.keys().hasOnly([
+        'uid',
+        'partidoId',
+        'golesLocal',
+        'golesVisitante',
+        'frase',
+        'sinDatos'
+      ]) &&
+        data.keys().hasAll([
+          'uid',
+          'partidoId',
+          'golesLocal',
+          'golesVisitante'
+        ]) &&
+        isText(data.uid) &&
+        isText(data.partidoId) &&
+        isGoals(data.golesLocal) &&
+        isGoals(data.golesVisitante) &&
+        isOptionalFrase(data.get('frase', null)) &&
+        isOptionalSinDatos(data);
+    }
+
+    function isOptionalSinDatos(data) {
+      return !data.keys().hasAny(['sinDatos']) || data.sinDatos is bool;
+    }
+
     function validPronosticoFraseField(data) {
       return isOptionalFrase(data.get('frase', null));
     }
@@ -109,6 +136,11 @@ service cloud.firestore {
     function validPronosticoGoalsAndFraseFields(data) {
       return validPronosticoGoalsFields(data) &&
         validPronosticoFraseField(data);
+    }
+
+    function validPronosticoAdminFields(data) {
+      return validPronosticoGoalsAndFraseFields(data) &&
+        isOptionalSinDatos(data);
     }
 
     function isRacha(value) {
@@ -360,7 +392,7 @@ service cloud.firestore {
           partidoAbierto(request.resource.data.partidoId)
       ) || (
         isAdmin() &&
-          validPronosticoCreate(request.resource.data) &&
+          validPronosticoAdminCreate(request.resource.data) &&
           pronosticoId == request.resource.data.uid + '_' + request.resource.data.partidoId
       );
       allow update: if (
@@ -410,6 +442,15 @@ service cloud.firestore {
                 'frase'
               ]) &&
               validPronosticoGoalsAndFraseFields(request.resource.data)
+            ) ||
+            (
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'golesLocal',
+                'golesVisitante',
+                'frase',
+                'sinDatos'
+              ]) &&
+              validPronosticoAdminFields(request.resource.data)
             ) ||
             (
               request.resource.data.diff(resource.data).affectedKeys().hasOnly([

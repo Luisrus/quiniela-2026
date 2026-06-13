@@ -185,8 +185,13 @@
 
               @if (pronosticoGuardado(); as guardado) {
                 <p class="admin-current-pred">
-                  Pronóstico guardado:
-                  <strong>{{ guardado.golesLocal }}-{{ guardado.golesVisitante }}</strong>
+                  @if (guardado.sinDatos === true) {
+                    Sin datos cargados:
+                    <strong>0 pts</strong>
+                  } @else {
+                    Pronóstico guardado:
+                    <strong>{{ guardado.golesLocal }}-{{ guardado.golesVisitante }}</strong>
+                  }
                   @if (guardado.puntosGanados !== null) {
                     <span>· {{ guardado.puntosGanados }} pts</span>
                   }
@@ -238,6 +243,15 @@
                 } @else {
                   Guardar pronóstico
                 }
+              </button>
+
+              <button
+                type="button"
+                class="save-button secondary-button"
+                [disabled]="guardandoPronostico()"
+                (click)="guardarPronosticoSinDatos()"
+              >
+                Marcar sin datos (0 pts)
               </button>
             </article>
           }

@@ -11,4 +11,5 @@ export interface AdminPronosticoInput {
   readonly partidoId: string;
   readonly golesLocal: number;
   readonly golesVisitante: number;
+  readonly sinDatos?: boolean;
 }

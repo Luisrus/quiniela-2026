@@ -37,6 +37,7 @@ interface StoredPronostico {
   readonly golesLocal: number;
   readonly golesVisitante: number;
   readonly frase?: string;
+  readonly sinDatos?: boolean;
   readonly puntosGanados?: number | null;
   readonly puntosProvisionales?: number | null;
 }
@@ -120,10 +121,14 @@ export class PronosticosService {
       return cached;
     }
 
-    const stream$ = combineLatest(ids.map((id) => this.pronosticosPorPartido$(id))).pipe(
-      map((groups) => groups.flat()),
-      shareReplay({ bufferSize: 1, refCount: false })
-    );
+    const batches = chunkStrings(ids, PRONOSTICO_IN_BATCH);
+    const batchStreams = batches.map((batch) => this.pronosticosPorPartidosBatch$(batch));
+    const stream$ = batchStreams.length === 1
+      ? batchStreams[0]!
+      : combineLatest(batchStreams).pipe(
+          map((groups) => groups.flat()),
+          shareReplay({ bufferSize: 1, refCount: false })
+        );
 
     this.pronosticosPorPartidosCache.set(cacheKey, stream$);
     return stream$;
@@ -232,6 +237,25 @@ export class PronosticosService {
     return this.listenPronosticos(pronosticosQuery);
   }
 
+  private pronosticosPorPartidosBatch$(
+    partidoIds: readonly string[]
+  ): Observable<readonly Pronostico[]> {
+    const cacheKey = partidoIds.join('|');
+    const cached = this.pronosticosPorPartidosCache.get(cacheKey);
+
+    if (cached !== undefined) {
+      return cached;
+    }
+
+    const pronosticosQuery = query(
+      this.pronosticosCollection,
+      where('partidoId', 'in', [...partidoIds])
+    );
+    const stream$ = this.listenPronosticos(pronosticosQuery);
+    this.pronosticosPorPartidosCache.set(cacheKey, stream$);
+    return stream$;
+  }
+
   private partidoRef(partidoId: string): DocumentReference<Partido> {
     return doc(this.firestore, 'partidos', partidoId) as DocumentReference<Partido>;
   }
@@ -252,6 +276,7 @@ export class PronosticosService {
       golesLocal: value.golesLocal,
       golesVisitante: value.golesVisitante,
       frase: value.frase,
+      sinDatos: value.sinDatos === true,
       puntosGanados: value.puntosGanados ?? null,
       puntosProvisionales: value.puntosProvisionales ?? null
     };
@@ -297,4 +322,16 @@ function isFirebaseError(error: unknown): error is { code: string } {
 
 function uniqueStrings(values: readonly string[]): readonly string[] {
   return [...new Set(values.filter((value) => value.trim() !== ''))].sort();
+}
+
+const PRONOSTICO_IN_BATCH = 30;
+
+function chunkStrings(values: readonly string[], size: number): readonly string[][] {
+  const chunks: string[][] = [];
+
+  for (let index = 0; index < values.length; index += size) {
+    chunks.push(values.slice(index, index + size));
+  }
+
+  return chunks;
 }

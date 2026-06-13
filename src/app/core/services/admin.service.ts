@@ -37,6 +37,7 @@ interface StoredPronostico {
   readonly golesLocal: number;
   readonly golesVisitante: number;
   readonly frase?: string;
+  readonly sinDatos?: boolean;
   readonly puntosGanados?: number | null;
   readonly puntosProvisionales?: number | null;
 }
@@ -120,7 +121,8 @@ export class AdminService {
           uid: input.uid,
           partidoId: input.partidoId,
           golesLocal: input.golesLocal,
-          golesVisitante: input.golesVisitante
+          golesVisitante: input.golesVisitante,
+          sinDatos: input.sinDatos === true
         },
         { merge: true }
       );
@@ -172,67 +174,55 @@ export class AdminService {
   private async guardarResultadoYCalcularPuntosUnsafe(
     input: AdminResultadoInput
   ): Promise<void> {
+    const partidoRef = this.partidoRef(input.partidoId);
     const pronosticosDelPartidoQuery = query(
       this.pronosticosCollection,
       where('partidoId', '==', input.partidoId)
     );
     const torneosCollection = collection(this.firestore, 'torneos') as CollectionReference<Torneo>;
     const [
+      partidoActualSnapshot,
       pronosticosDelPartidoSnapshot,
-      pronosticosSnapshot,
-      usuariosSnapshot,
-      partidosSnapshot,
       torneosSnapshot
     ] = await Promise.all([
+      getDoc(partidoRef),
       getDocs(pronosticosDelPartidoQuery),
-      getDocs(this.pronosticosCollection),
-      getDocs(this.usuariosCollection),
-      getDocs(this.partidosCollection),
       getDocs(torneosCollection)
     ]);
-    const usuarioRefs = usuariosSnapshot.docs.map((snapshot) => snapshot.ref);
-    const partidoRef = this.partidoRef(input.partidoId);
 
-    const partidoFaseMap = new Map<string, number>();
-    partidosSnapshot.forEach((partidoDoc) => {
-      const partido = partidoDoc.data();
-      partidoFaseMap.set(partido.id, partidoFases.indexOf(partido.fase));
-    });
+    if (!partidoActualSnapshot.exists()) {
+      throw new Error(`No existe el partido ${input.partidoId}.`);
+    }
+
+    const partidoActual = partidoActualSnapshot.data();
     const torneos = torneosSnapshot.docs.map((torneoDoc) => torneoDoc.data());
-
-    const puntosPorUsuario = new Map<string, number>();
-    const puntosPorTorneoPorUsuario = new Map<string, Record<string, number>>();
+    const puntosDeltaPorUsuario = new Map<string, number>();
+    const puntosTorneoDeltaPorUsuario = new Map<string, Record<string, number>>();
     const puntosPartidoPorUid = new Map<string, number>();
     const puntosGanadosPorPronosticoRef = new Map<string, number>();
 
-    for (const pronosticoDoc of pronosticosSnapshot.docs) {
+    for (const pronosticoDoc of pronosticosDelPartidoSnapshot.docs) {
       const pronostico = pronosticoDoc.data();
-      const esPronosticoDelPartido = pronostico.partidoId === input.partidoId;
-      const puntos = esPronosticoDelPartido
-        ? calcularPuntosPronostico(pronostico, input)
-        : numberOrZero(pronostico.puntosGanados);
+      const puntos = pronostico.sinDatos === true
+        ? 0
+        : calcularPuntosPronostico(pronostico, input);
+      const delta = puntos - numberOrZero(pronostico.puntosGanados);
 
-      puntosPorUsuario.set(
+      puntosDeltaPorUsuario.set(
         pronostico.uid,
-        (puntosPorUsuario.get(pronostico.uid) ?? 0) + puntos
+        (puntosDeltaPorUsuario.get(pronostico.uid) ?? 0) + delta
       );
 
-      const pronosticoFaseIndex = partidoFaseMap.get(pronostico.partidoId) ?? -1;
-      let puntosTorneo = puntosPorTorneoPorUsuario.get(pronostico.uid);
-      if (!puntosTorneo) {
-        puntosTorneo = {};
-        puntosPorTorneoPorUsuario.set(pronostico.uid, puntosTorneo);
+      let puntosTorneoDelta = puntosTorneoDeltaPorUsuario.get(pronostico.uid);
+      if (puntosTorneoDelta === undefined) {
+        puntosTorneoDelta = {};
+        puntosTorneoDeltaPorUsuario.set(pronostico.uid, puntosTorneoDelta);
       }
 
       for (const torneo of torneos) {
-        const torneoFaseIndex = partidoFases.indexOf(torneo.faseInicio);
-        if (pronosticoFaseIndex >= torneoFaseIndex && torneo.participantes.includes(pronostico.uid)) {
-          puntosTorneo[torneo.id] = (puntosTorneo[torneo.id] ?? 0) + puntos;
+        if (torneoIncluyePartido(torneo, partidoActual, pronostico.uid)) {
+          puntosTorneoDelta[torneo.id] = (puntosTorneoDelta[torneo.id] ?? 0) + delta;
         }
-      }
-
-      if (!esPronosticoDelPartido) {
-        continue;
       }
 
       puntosPartidoPorUid.set(pronostico.uid, puntos);
@@ -246,8 +236,12 @@ export class AdminService {
         throw new Error(`No existe el partido ${input.partidoId}.`);
       }
 
-      const usuarioSnapshots = await Promise.all(
-        usuarioRefs.map((usuarioRef) => transaction.get(usuarioRef))
+      const affectedUids = [...new Set([
+        ...puntosDeltaPorUsuario.keys(),
+        ...puntosPartidoPorUid.keys()
+      ])];
+      const affectedUsuarioSnapshots = await Promise.all(
+        affectedUids.map((uid) => transaction.get(this.usuarioRef(uid)))
       );
 
       for (const pronosticoDoc of pronosticosDelPartidoSnapshot.docs) {
@@ -259,20 +253,31 @@ export class AdminService {
         transaction.update(pronosticoDoc.ref, { puntosGanados: puntos });
       }
 
-      for (const usuarioSnapshot of usuarioSnapshots) {
+      for (const usuarioSnapshot of affectedUsuarioSnapshots) {
         if (!usuarioSnapshot.exists()) {
           continue;
         }
 
         const usuario = usuarioSnapshot.data();
         const puntosPartido = puntosPartidoPorUid.get(usuario.uid);
+        const puntosDelta = puntosDeltaPorUsuario.get(usuario.uid) ?? 0;
+        const puntosPorTorneo = {
+          ...(usuario.puntosPorTorneo ?? {})
+        };
+
+        for (const [torneoId, torneoDelta] of Object.entries(
+          puntosTorneoDeltaPorUsuario.get(usuario.uid) ?? {}
+        )) {
+          puntosPorTorneo[torneoId] = numberOrZero(puntosPorTorneo[torneoId]) + torneoDelta;
+        }
+
         const rachas = puntosPartido === undefined
           ? rachasFromUsuario(usuario)
           : actualizarRachas(rachasFromUsuario(usuario), puntosPartido);
 
         transaction.update(usuarioSnapshot.ref, {
-          puntos: puntosPorUsuario.get(usuario.uid) ?? 0,
-          puntosPorTorneo: puntosPorTorneoPorUsuario.get(usuario.uid) ?? {},
+          puntos: usuario.puntos + puntosDelta,
+          puntosPorTorneo,
           rachaAciertos: rachas.rachaAciertos,
           rachaAciertosMaxima: rachas.rachaAciertosMaxima,
           rachaExactos: rachas.rachaExactos,
@@ -313,6 +318,21 @@ function buildInvitadoUid(nombre: string): string {
 
 function numberOrZero(value: number | null | undefined): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function torneoIncluyePartido(
+  torneo: Torneo,
+  partido: Pick<Partido, 'fase'>,
+  uid: string
+): boolean {
+  if (!torneo.participantes.includes(uid)) {
+    return false;
+  }
+
+  const partidoFaseIndex = partidoFases.indexOf(partido.fase);
+  const torneoFaseIndex = partidoFases.indexOf(torneo.faseInicio);
+
+  return partidoFaseIndex >= torneoFaseIndex;
 }
 
 function partidoTieneResultadoDefinitivo(partido: Partido): boolean {
