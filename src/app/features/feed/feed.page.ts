@@ -49,18 +49,25 @@ export class FeedPage {
   private readonly partidoIds = computed(() =>
     uniqueStrings((this.partidosSource() ?? []).map((partido) => partido.id))
   );
+  private readonly pronosticosLoadKey = computed(() => {
+    if (this.partidosSource() === undefined) {
+      return undefined;
+    }
+
+    return this.partidoIds().join('|');
+  });
   private readonly pronosticosSource = toSignal(
-    toObservable(this.partidoIds).pipe(
-      switchMap((ids) => {
-        if (this.partidosSource() === undefined) {
+    toObservable(this.pronosticosLoadKey).pipe(
+      switchMap((loadKey) => {
+        if (loadKey === undefined) {
           return of(undefined);
         }
 
-        if (ids.length === 0) {
+        if (loadKey === '') {
           return of([] as const);
         }
 
-        return this.pronosticosService.pronosticosPorPartidos$(ids);
+        return this.pronosticosService.pronosticosPorPartidos$(loadKey.split('|'));
       })
     ),
     { initialValue: undefined }
