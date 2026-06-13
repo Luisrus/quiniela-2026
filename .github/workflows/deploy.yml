@@ -1,4 +1,5 @@
 # Deploy de hosting + reglas Firestore al hacer push a main.
+# Functions se despliegan aparte (requiere Blaze): npm run deploy:functions
 #
 # Secrets en GitHub: Settings → Secrets and variables → Actions
 #   FIREBASE_TOKEN
@@ -50,4 +51,4 @@ jobs:
         run: npm run build
 
       - name: Deploy to Firebase
-        run: npx firebase-tools deploy --only hosting,firestore:rules,functions --token "${{ secrets.FIREBASE_TOKEN }}" --non-interactive
+        run: npx firebase-tools deploy --only hosting,firestore:rules --token "${{ secrets.FIREBASE_TOKEN }}" --non-interactive
