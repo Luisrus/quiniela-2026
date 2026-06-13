@@ -3,6 +3,47 @@
     <router-outlet />
   </div>
 
+  @if (retoPopup(); as reto) {
+    <div class="bet-invite-backdrop">
+      <section class="bet-invite-card" role="dialog" aria-modal="true" aria-label="Invitacion de apuesta">
+        <div class="bet-invite-icon">!</div>
+        <div class="bet-invite-body">
+          <p class="bet-invite-kicker">Nueva apuesta</p>
+          <h2>{{ playerName(reto.retador) }} te reto</h2>
+          <p>{{ matchName(reto.partidoId) }}</p>
+          <strong>{{ apuestaDetalle(reto) }}</strong>
+        </div>
+        <div class="bet-invite-actions">
+          <button
+            type="button"
+            class="bet-invite-secondary"
+            [disabled]="accionApuestaId() === reto.id"
+            (click)="rechazarApuesta(reto.id)"
+          >
+            Rechazar
+          </button>
+          <button
+            type="button"
+            class="bet-invite-primary"
+            [disabled]="accionApuestaId() === reto.id"
+            (click)="aceptarApuesta(reto.id)"
+          >
+            Aceptar
+          </button>
+        </div>
+        <button
+          type="button"
+          class="bet-invite-close"
+          [disabled]="accionApuestaId() === reto.id"
+          (click)="cerrarRetoPopup(reto.id)"
+          aria-label="Cerrar invitacion"
+        >
+          X
+        </button>
+      </section>
+    </div>
+  }
+
   <div style="text-align: center; padding: 6px 0; font-size: 10px; font-weight: 800; letter-spacing: 0.1em; color: var(--text-tertiary); background: var(--bg-surface); text-transform: uppercase; z-index: 10; border-top: 1px solid var(--bg-border);">
     <span style="background: linear-gradient(90deg, var(--gold), var(--accent)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; opacity: 0.85;">
       ✨ Made by Bassilius

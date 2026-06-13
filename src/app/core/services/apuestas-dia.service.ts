@@ -10,7 +10,7 @@ import {
   type CollectionReference,
   type DocumentReference
 } from '@angular/fire/firestore';
-import { map, of, type Observable } from 'rxjs';
+import { map, of, shareReplay, type Observable } from 'rxjs';
 
 import {
   buildApuestaDiaId,
@@ -43,6 +43,7 @@ export class ApuestasDiaService {
     this.firestore,
     'apuestasDia'
   ) as CollectionReference<ApuestaDia>;
+  private readonly retosRecibidosCache = new Map<string, Observable<readonly ApuestaDia[]>>();
 
   apuestasPorJornada$(jornadaKey: string): Observable<readonly ApuestaDia[]> {
     const q = query(this.apuestasCollection, where('jornadaKey', '==', jornadaKey));
@@ -87,17 +88,26 @@ export class ApuestasDiaService {
   }
 
   retosRecibidosPorUid$(uid: string): Observable<readonly ApuestaDia[]> {
+    const cached = this.retosRecibidosCache.get(uid);
+
+    if (cached !== undefined) {
+      return cached;
+    }
+
     const q = query(
       this.apuestasCollection,
       where('retado', '==', uid),
       where('resultado', '==', 'esperando_aceptacion')
     );
 
-    return this.errors.handleStream(
+    const stream$ = this.errors.handleStream(
       collectionData(q, { idField: 'id' }) as Observable<readonly ApuestaDia[]>,
       [],
       'No se pudieron cargar los retos recibidos.'
-    );
+    ).pipe(shareReplay({ bufferSize: 1, refCount: false }));
+
+    this.retosRecibidosCache.set(uid, stream$);
+    return stream$;
   }
 
   async guardar(input: GuardarApuestaPartidoInput): Promise<void> {

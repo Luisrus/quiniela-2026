@@ -21,7 +21,6 @@ import {
 } from '../../core/models/pronostico-especial.model';
 import type { ApuestaDia } from '../../core/models/apuesta-dia.model';
 import type { Pronostico } from '../../core/models/pronostico.model';
-import { ApuestaJornadaSheetComponent } from '../../shared/components/quiniela-social/apuesta-jornada-sheet.component';
 import { AvatarComponent } from '../../shared/components/quiniela-ui/avatar.component';
 import { EmptyStateComponent } from '../../shared/components/quiniela-ui/empty-state.component';
 import { SkeletonCardComponent } from '../../shared/components/quiniela-ui/skeleton-card.component';
@@ -50,7 +49,6 @@ interface OracleBadge {
   standalone: true,
   imports: [
     AvatarComponent,
-    ApuestaJornadaSheetComponent,
     EmptyStateComponent,
     SkeletonCardComponent,
     StatBlockComponent,
@@ -74,10 +72,6 @@ export class PerfilPage {
   private readonly usuariosSource = toSignal(this.usuariosService.usuarios$(), {
     initialValue: undefined
   });
-  private readonly conteoProgramadosSource = toSignal(
-    this.partidosService.conteoProgramadosSemana$(),
-    { initialValue: undefined }
-  );
   private readonly especialesSource = toSignal(this.especialesService.misPronosticosEspeciales$(), {
     initialValue: undefined
   });
@@ -89,7 +83,6 @@ export class PerfilPage {
   protected readonly savingEquipo = signal(false);
   protected readonly guardandoNotificaciones = signal(false);
   protected readonly cerrandoSesion = signal(false);
-  protected readonly apuestaSheetOpen = signal(false);
   protected readonly accionApuestaId = signal<string | null>(null);
   protected readonly notificacionesEstado = signal<MessagingEstado>('pendiente');
   protected readonly skeletonRows: readonly number[] = [1, 2, 3];
@@ -124,16 +117,6 @@ export class PerfilPage {
     toObservable(this.apuestaPartidoIds).pipe(
       switchMap((ids) => this.partidosService.partidosPorIds$(ids))
     )
-  );
-  private readonly programadosSource = toSignal(
-    toObservable(this.apuestaSheetOpen).pipe(
-      switchMap((open) =>
-        open
-          ? this.partidosService.partidosProgramadosSemana$()
-          : of([] as const)
-      )
-    ),
-    { initialValue: [] as const }
   );
 
   constructor() {
@@ -180,12 +163,6 @@ export class PerfilPage {
       .map((usuario, index) => toUiPlayer(usuario, index + 1))
   );
 
-  protected readonly playersApuesta = computed(() =>
-    (this.usuariosSource() ?? [])
-      .filter((usuario) => esTitular(usuario.tipo))
-      .map((usuario, index) => toUiPlayer(usuario, index + 1))
-  );
-
   protected readonly player = computed(() =>
     this.players().find((item) => item.id === this.userId()) ?? null
   );
@@ -208,28 +185,6 @@ export class PerfilPage {
   protected readonly played = computed(() =>
     (this.jugadosSource() ?? []).map((partido) => toUiMatch(partido))
   );
-
-  protected readonly partidosApuesta = computed(() =>
-    this.programadosSource().map((partido) => toUiMatch(partido))
-  );
-
-  protected readonly puedeCrearApuesta = computed(() => (this.conteoProgramadosSource() ?? 0) > 0);
-
-  protected readonly partidoJornadaKeys = computed<Readonly<Record<string, string>>>(() => {
-    const keys: Record<string, string> = {};
-    const allPartidos = [
-      ...(this.jugadosSource() ?? []),
-      ...(this.apuestaPartidosSource() ?? [])
-    ];
-
-    for (const partido of allPartidos) {
-      keys[partido.id] = partido.fase === 'grupos' && typeof partido.jornada === 'number'
-        ? `J${partido.jornada}`
-        : partido.fase;
-    }
-
-    return keys;
-  });
 
   protected readonly retosRecibidos = computed(() => this.retosRecibidosSource());
 

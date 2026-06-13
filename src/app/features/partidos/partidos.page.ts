@@ -8,6 +8,7 @@ import { PartidosService } from '../../core/services/partidos.service';
 import { PronosticosService } from '../../core/services/pronosticos.service';
 import { ToastService } from '../../core/services/toast.service';
 import { UsuariosService } from '../../core/services/usuarios.service';
+import { esTitular } from '../../core/utils/usuario-tipo.util';
 import type { UiMatch, UiPrediction } from '../../shared/models/quiniela-view.model';
 import {
   groupPredictedBy,
@@ -24,6 +25,7 @@ import {
   type SegmentedControlOption
 } from '../../shared/components/quiniela-ui/segmented-control.component';
 import { SkeletonCardComponent } from '../../shared/components/quiniela-ui/skeleton-card.component';
+import { ApuestaJornadaSheetComponent } from '../../shared/components/quiniela-social/apuesta-jornada-sheet.component';
 
 type MatchTab = 'live' | 'upcoming' | 'played';
 
@@ -35,6 +37,7 @@ type MatchTab = 'live' | 'upcoming' | 'played';
     LiveDotComponent,
     MatchCardComponent,
     MatchDetailSheetComponent,
+    ApuestaJornadaSheetComponent,
     SegmentedControlComponent,
     SkeletonCardComponent
   ],
@@ -50,6 +53,7 @@ export class PartidosPage {
 
   protected readonly tab = signal<MatchTab>('upcoming');
   protected readonly selectedMatch = signal<UiMatch | null>(null);
+  protected readonly apuestaSheetOpen = signal(false);
   private readonly draftPredictions = signal<Record<string, UiPrediction>>({});
   private readonly draftFrases = signal<Record<string, string>>({});
   private readonly dirtyMatches = signal<ReadonlySet<string>>(new Set());
@@ -85,8 +89,30 @@ export class PartidosPage {
     (this.usuariosSource() ?? []).map((usuario, index) => toUiPlayer(usuario, index + 1))
   );
 
+  protected readonly playersApuesta = computed(() =>
+    (this.usuariosSource() ?? [])
+      .filter((usuario) => esTitular(usuario.tipo))
+      .map((usuario, index) => toUiPlayer(usuario, index + 1))
+  );
+
   protected readonly filteredMatches = computed(() =>
     (this.partidosSource() ?? []).map((partido) => toUiMatch(partido))
+  );
+
+  protected readonly matchJornadaKeys = computed<Readonly<Record<string, string>>>(() => {
+    const keys: Record<string, string> = {};
+
+    for (const partido of this.partidosSource() ?? []) {
+      keys[partido.id] = partido.fase === 'grupos' && typeof partido.jornada === 'number'
+        ? `J${partido.jornada}`
+        : partido.fase;
+    }
+
+    return keys;
+  });
+
+  protected readonly matchesApuesta = computed(() =>
+    this.filteredMatches().filter((match) => this.predictionOpenFor(match.id))
   );
 
   private readonly filteredMatchIds = computed(() =>
@@ -120,6 +146,11 @@ export class PartidosPage {
   );
 
   protected readonly enVivoCount = computed(() => this.conteoLiveSource() ?? 0);
+
+  protected readonly puedeCrearApuesta = computed(() =>
+    this.tab() === 'upcoming' &&
+    this.matchesApuesta().length > 0
+  );
 
   protected setTab(value: string): void {
     this.tab.set(value as MatchTab);

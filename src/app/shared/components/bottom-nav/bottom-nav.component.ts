@@ -1,5 +1,11 @@
-import { Component } from '@angular/core';
+import { Component, computed, inject } from '@angular/core';
+import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { RouterLink, RouterLinkActive } from '@angular/router';
+import { of, switchMap } from 'rxjs';
+
+import type { ApuestaDia } from '../../../core/models/apuesta-dia.model';
+import { ApuestasDiaService } from '../../../core/services/apuestas-dia.service';
+import { AuthService } from '../../../core/services/auth.service';
 
 interface BottomNavItem {
   readonly id: string;
@@ -27,6 +33,15 @@ interface BottomNavItem {
         >
           @if (activeLink.isActive) {
             <span style="position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 28px; height: 3px; border-radius: 0 0 3px 3px; background: var(--accent)"></span>
+          }
+
+          @if (tab.id === 'perfil' && pendingBetCount() > 0) {
+            <span
+              style="position: absolute; top: 7px; right: max(18px, 27%); min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; background: var(--danger); color: white; font-size: 10px; font-weight: 900; line-height: 1; border: 2px solid var(--bg-surface)"
+              aria-label="Apuestas pendientes"
+            >
+              {{ pendingBetCount() }}
+            </span>
           }
 
           @switch (tab.icon) {
@@ -80,6 +95,22 @@ interface BottomNavItem {
   `
 })
 export class BottomNavComponent {
+  private readonly auth = inject(AuthService);
+  private readonly apuestasService = inject(ApuestasDiaService);
+  private readonly userId = computed(() => this.auth.userProfile()?.uid ?? '');
+  private readonly retosRecibidosSource = toSignal(
+    toObservable(this.userId).pipe(
+      switchMap((uid) =>
+        uid === ''
+          ? of([] as readonly ApuestaDia[])
+          : this.apuestasService.retosRecibidosPorUid$(uid)
+      )
+    ),
+    { initialValue: [] as readonly ApuestaDia[] }
+  );
+
+  protected readonly pendingBetCount = computed(() => this.retosRecibidosSource().length);
+
   protected readonly tabs: readonly BottomNavItem[] = [
     { id: 'partidos', label: 'Pronósticos', route: '/partidos', icon: 'partidos' },
     { id: 'tabla', label: 'Tabla', route: '/tabla', icon: 'tabla' },

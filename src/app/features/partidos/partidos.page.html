@@ -7,6 +7,17 @@
       <h1 style="font-size: 23px; font-weight: 800; line-height: 1.1; letter-spacing: -0.02em">Mundial 2026</h1>
     </div>
     <div style="display: flex; align-items: center; gap: 6px; margin-top: 4px">
+      @if (tab() === 'upcoming') {
+        <button
+          type="button"
+          style="min-height: 32px; padding: 0 12px; border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); border-radius: 999px; background: var(--accent-muted); color: var(--accent); font-family: var(--font-ui); font-size: 12px; font-weight: 800; cursor: pointer"
+          [disabled]="!puedeCrearApuesta()"
+          [style.opacity]="puedeCrearApuesta() ? 1 : 0.45"
+          (click)="apuestaSheetOpen.set(true)"
+        >
+          Apuesta
+        </button>
+      }
       @if (enVivoCount() > 0) {
         <div style="display: flex; align-items: center; gap: 5px; background: color-mix(in srgb, var(--live) 14%, transparent); padding: 4px 10px; border-radius: 20px">
           <app-live-dot [size]="7" />
@@ -69,6 +80,16 @@
       [match]="match"
       [userId]="userId()"
       (close)="selectedMatch.set(null)"
+    />
+  }
+
+  @if (apuestaSheetOpen()) {
+    <app-apuesta-jornada-sheet
+      [userId]="userId()"
+      [players]="playersApuesta()"
+      [matches]="matchesApuesta()"
+      [matchJornadaKeys]="matchJornadaKeys()"
+      (close)="apuestaSheetOpen.set(false)"
     />
   }
 </div>

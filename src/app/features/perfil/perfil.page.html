@@ -68,20 +68,12 @@
         <div style="margin-bottom: 20px">
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px">
             <h3 style="font-size: 15px; font-weight: 700; color: var(--text-primary)">Apuestas</h3>
-            <button
-              type="button"
-              class="btn-especiales"
-              [disabled]="!puedeCrearApuesta()"
-              (click)="apuestaSheetOpen.set(true)"
-            >
-              Nueva
-            </button>
           </div>
 
           <div class="card" style="padding: 12px 14px; display: flex; flex-direction: column; gap: 10px">
             @if (retosRecibidos().length === 0) {
               <p style="font-size: 12px; color: var(--text-secondary); line-height: 1.45">
-                No tienes invitaciones pendientes. Puedes retar a otro jugador por un partido especifico.
+                No tienes invitaciones pendientes.
               </p>
             } @else {
               <p style="font-size: 12px; color: var(--accent); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em">
@@ -281,13 +273,4 @@
     </footer>
   }
 
-  @if (apuestaSheetOpen()) {
-    <app-apuesta-jornada-sheet
-        [userId]="userId()"
-        [players]="playersApuesta()"
-        [matches]="partidosApuesta()"
-        [matchJornadaKeys]="partidoJornadaKeys()"
-        (close)="apuestaSheetOpen.set(false)"
-      />
-  }
 </div>
