@@ -20,7 +20,7 @@ import { Component, EventEmitter, Input, Output } from '@angular/core';
           [style.outline]="active ? '1.5px solid var(--accent)' : 'none'"
           [style.font-size.px]="13"
           [style.cursor]="'pointer'"
-          [style.opacity]="show ? 1 : 0.4"
+          [style.opacity]="show ? 1 : 0.6"
           [style.display]="'inline-flex'"
           [style.align-items]="'center'"
           [style.gap.px]="3"
