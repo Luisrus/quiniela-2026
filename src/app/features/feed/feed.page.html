@@ -33,15 +33,12 @@
           </div>
 
           <div style="display: flex; align-items: flex-start; gap: 10px; margin-bottom: 10px">
-            <app-avatar [player]="item.result.player" [size]="36" [showFlag]="true" />
+            <app-avatar [player]="item.result.player" [size]="36" />
             <div style="flex: 1; min-width: 0">
               <div style="display: flex; align-items: center; gap: 5px; margin-bottom: 4px">
                 <span [style.font-weight]="isMe ? 700 : 600" [style.color]="isMe ? 'var(--accent)' : 'var(--text-primary)'" style="font-size: 14px">
                   {{ item.result.player.name }}@if (isMe) { · tú }
                 </span>
-                @if (item.result.player.fav) {
-                  <app-team-flag [name]="item.result.player.name" [url]="item.result.player.fav" [size]="14" />
-                }
               </div>
               <p style="font-size: 14px; font-style: italic; color: var(--text-primary); line-height: 1.4; margin-bottom: 6px">
                 "{{ item.result.phrase }}"

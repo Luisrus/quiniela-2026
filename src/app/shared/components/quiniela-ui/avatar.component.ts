@@ -7,7 +7,19 @@ import type { UiPlayer } from '../../models/quiniela-view.model';
   standalone: true,
   template: `
     <div style="position: relative; display: inline-flex; flex-shrink: 0">
-      @if (showPhoto) {
+      @if (showFlagAvatar) {
+        <img
+          [src]="player.fav"
+          [alt]="player.name"
+          [style.width.px]="size"
+          [style.height.px]="size"
+          [style.border]="border"
+          style="border-radius: 50%; object-fit: cover; flex-shrink: 0; display: block"
+          loading="lazy"
+          decoding="async"
+          (error)="onFlagError()"
+        >
+      } @else if (showPhoto) {
         <img
           [src]="player.photoUrl"
           [alt]="player.name"
@@ -30,39 +42,35 @@ import type { UiPlayer } from '../../models/quiniela-view.model';
           {{ player.initials }}
         </div>
       }
-      @if (showFlag && player.fav) {
-        <span
-          [style.width.px]="flagSize"
-          [style.height.px]="flagSize"
-          style="position: absolute; bottom: -2px; right: -4px; border: 1.5px solid var(--bg-surface); border-radius: 50%; background: var(--bg-elevated); overflow: hidden; display: flex; align-items: center; justify-content: center; line-height: 0"
-        >
-          <img
-            [src]="player.fav"
-            alt=""
-            [style.width.px]="flagSize - 2"
-            [style.height.px]="flagSize - 2"
-            style="object-fit: contain; display: block"
-            loading="lazy"
-            decoding="async"
-          />
-        </span>
-      }
     </div>
   `
 })
 export class AvatarComponent implements OnChanges {
   @Input({ required: true }) player!: UiPlayer;
   @Input() size = 36;
-  @Input() showFlag = false;
 
-  protected showPhoto = false;
+  protected flagLoadFailed = false;
+  protected photoLoadFailed = false;
 
   ngOnChanges(): void {
-    this.showPhoto = this.hasPhotoUrl();
+    this.flagLoadFailed = false;
+    this.photoLoadFailed = false;
   }
 
   protected onPhotoError(): void {
-    this.showPhoto = false;
+    this.photoLoadFailed = true;
+  }
+
+  protected onFlagError(): void {
+    this.flagLoadFailed = true;
+  }
+
+  get showFlagAvatar(): boolean {
+    return this.hasFavUrl() && !this.flagLoadFailed;
+  }
+
+  get showPhoto(): boolean {
+    return this.hasPhotoUrl() && !this.photoLoadFailed;
   }
 
   get background(): string {
@@ -73,8 +81,9 @@ export class AvatarComponent implements OnChanges {
     return `1.5px solid hsl(${this.player.hue}, 58%, 45%)`;
   }
 
-  get flagSize(): number {
-    return Math.min(22, Math.max(10, Math.round(this.size * 0.38)));
+  private hasFavUrl(): boolean {
+    const fav = this.player.fav?.trim();
+    return fav !== undefined && fav !== '';
   }
 
   private hasPhotoUrl(): boolean {

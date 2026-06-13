@@ -141,7 +141,7 @@
       {{ rankLabel(position, variant) }}
     </div>
 
-    <app-avatar [player]="player" [size]="40" [showFlag]="true" />
+    <app-avatar [player]="player" [size]="40" />
 
     <div style="flex: 1; min-width: 0">
       <div style="display: flex; align-items: center; gap: 5px; flex-wrap: wrap">
@@ -168,9 +168,6 @@
         }
         @for (medal of player.medals; track medal) {
           <app-badge variant="gold" [extraStyle]="{ 'font-size': '11px' }">{{ medal }}</app-badge>
-        }
-        @if (player.fav) {
-          <app-team-flag name="Equipo favorito" [url]="player.fav" [size]="14" />
         }
       </div>
     </div>
