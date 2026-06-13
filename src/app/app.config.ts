@@ -1,7 +1,7 @@
 import { ApplicationConfig, provideZoneChangeDetection } from '@angular/core';
-import { provideFirebaseApp, initializeApp } from '@angular/fire/app';
+import { provideFirebaseApp, initializeApp, getApp } from '@angular/fire/app';
 import { provideAuth, getAuth } from '@angular/fire/auth';
-import { provideFirestore, getFirestore } from '@angular/fire/firestore';
+import { provideFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from '@angular/fire/firestore';
 import { provideMessaging, getMessaging } from '@angular/fire/messaging';
 import {
   provideRouter,
@@ -9,9 +9,36 @@ import {
   withNavigationErrorHandler
 } from '@angular/router';
 
+import {
+  connectAuthEmulatorIfNeeded,
+  connectFirestoreEmulatorIfNeeded
+} from './core/config/connect-firebase-emulators';
 import { environment } from '../environments/environment';
+import type { AppEnvironment } from '../environments/environment.model';
 import { routes } from './app.routes';
 import { provideCharts, withDefaultRegisterables } from 'ng2-charts';
+
+const appEnvironment = environment as AppEnvironment;
+
+const firebaseProviders: ApplicationConfig['providers'] = [
+  provideFirebaseApp(() => initializeApp(appEnvironment.firebase)),
+  provideAuth(() => {
+    const auth = getAuth();
+    connectAuthEmulatorIfNeeded(auth, appEnvironment);
+    return auth;
+  }),
+  provideFirestore(() => {
+    const firestore = initializeFirestore(getApp(), {
+      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+    });
+    connectFirestoreEmulatorIfNeeded(firestore, appEnvironment);
+    return firestore;
+  })
+];
+
+if (!appEnvironment.useEmulators) {
+  firebaseProviders.push(provideMessaging(() => getMessaging()));
+}
 
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -26,10 +53,7 @@ export const appConfig: ApplicationConfig = {
         }
       })
     ),
-    provideFirebaseApp(() => initializeApp(environment.firebase)),
-    provideAuth(() => getAuth()),
-    provideFirestore(() => getFirestore()),
-    provideMessaging(() => getMessaging())
+    ...firebaseProviders
   ]
 };
 

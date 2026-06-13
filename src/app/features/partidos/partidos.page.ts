@@ -1,6 +1,6 @@
 import { computed, Component, inject, signal } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
-import { of, switchMap } from 'rxjs';
+import { combineLatest, map, of, switchMap } from 'rxjs';
 
 import { PRONOSTICO_CIERRE_AVISO, partidoPronosticoAbierto } from '../../core/config/pronostico.config';
 import { AuthService } from '../../core/services/auth.service';
@@ -8,6 +8,7 @@ import { PartidosService } from '../../core/services/partidos.service';
 import { PronosticosService } from '../../core/services/pronosticos.service';
 import { ToastService } from '../../core/services/toast.service';
 import { UsuariosService } from '../../core/services/usuarios.service';
+import { todayDayKey } from '../../core/utils/partido-dia.util';
 import { esTitular } from '../../core/utils/usuario-tipo.util';
 import type { UiMatch, UiPrediction } from '../../shared/models/quiniela-view.model';
 import {
@@ -60,10 +61,22 @@ export class PartidosPage {
   protected readonly savingMatchId = signal<string | null>(null);
   protected readonly skeletonRows: readonly number[] = [1, 2, 3];
   protected readonly pronosticoCierreAviso = PRONOSTICO_CIERRE_AVISO;
+  protected readonly selectedPlayedDay = signal<string>(todayDayKey());
+
+  private readonly primerDiaTorneoSource = toSignal(
+    this.partidosService.primerDiaTorneo$(),
+    { initialValue: undefined }
+  );
+
+  protected readonly minDayKey = computed(() => this.primerDiaTorneoSource() ?? '2026-06-11');
+  protected readonly maxDayKey = computed(() => todayDayKey());
 
   private readonly partidosSource = toSignal(
-    toObservable(this.tab).pipe(
-      switchMap((tab) => this.partidosStreamForTab(tab))
+    combineLatest([
+      toObservable(this.tab),
+      toObservable(this.selectedPlayedDay)
+    ]).pipe(
+      switchMap(([tab, day]) => this.partidosStreamForTab(tab, day))
     ),
     { initialValue: undefined }
   );
@@ -276,13 +289,15 @@ export class PartidosPage {
     this.toasts.success('Pronóstico guardado.');
   }
 
-  private partidosStreamForTab(tab: MatchTab) {
+  private partidosStreamForTab(tab: MatchTab, day: string) {
     if (tab === 'live') {
       return this.partidosService.partidosPorEstado$('en_juego');
     }
 
     if (tab === 'played') {
-      return this.partidosService.partidosJugados$();
+      return this.partidosService.partidosPorDia$(day).pipe(
+        map((partidos) => partidos.filter((p) => p.estado === 'finalizado'))
+      );
     }
 
     return this.partidosService.partidosProgramadosSemana$();
