@@ -84,7 +84,7 @@ export class PartidosService {
     );
   }
 
-  /** Programados con fechaInicio en los próximos 7 días (hoy incluido). */
+  /** Programados con fechaInicio en los próximos 3 días (hoy incluido). */
   partidosProgramadosSemana$(): Observable<readonly Partido[]> {
     const cacheKey = `programado_semana_${weekRangeKey(todayDayKey())}`;
 
@@ -101,7 +101,7 @@ export class PartidosService {
     );
   }
 
-  /** Todos los partidos con fechaInicio en los próximos 7 días (cualquier estado). */
+  /** Todos los partidos con fechaInicio en los próximos 3 días (cualquier estado). */
   partidosDeLaSemana$(): Observable<readonly Partido[]> {
     const cacheKey = `semana_${weekRangeKey(todayDayKey())}`;
 
