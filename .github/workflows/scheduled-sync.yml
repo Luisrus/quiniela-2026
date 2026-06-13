@@ -4,14 +4,11 @@
 #   FIREBASE_SERVICE_ACCOUNT  (JSON o base64 del service account)
 #   FOOTBALL_DATA_TOKEN
 #
-# Cron: cada 10 minutos (UTC). En repo privado cuenta contra los 2000 min/mes gratis;
-# repo publico: minutos ilimitados en runners estandar.
+# Este workflow queda manual. El cron de actualizacion corre fuera de GitHub Actions.
 
 name: Scheduled sync
 
 on:
-  schedule:
-    - cron: '*/10 * * * *'
   workflow_dispatch:
 
 concurrency:

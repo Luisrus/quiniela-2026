@@ -18,7 +18,7 @@
           [attr.class]="'card fade-up s' + (i + 1 > 10 ? 10 : i + 1)"
           style="padding: 14px 16px; border: 1px solid var(--bg-border)"
           [style.background]="isMe ? 'var(--accent-muted)' : 'var(--bg-surface)'"
-          [style.border-color]="isMe ? 'rgba(180,240,64,0.25)' : 'var(--bg-border)'"
+          [style.border-color]="isMe ? 'color-mix(in srgb, var(--accent) 25%, transparent)' : 'var(--bg-border)'"
         >
           <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 10px; font-size: 11px; color: var(--text-tertiary)">
             <app-team-flag [name]="item.match.home.name" [url]="item.match.home.flag" [size]="16" />

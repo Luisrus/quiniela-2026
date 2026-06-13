@@ -94,8 +94,8 @@
 }
 
 .resultados-swiper-chip.is-live {
-  border-color: rgba(34, 197, 94, 0.35);
-  background: rgba(34, 197, 94, 0.1);
+  border-color: color-mix(in srgb, var(--live) 35%, transparent);
+  background: color-mix(in srgb, var(--live) 12%, transparent);
 }
 
 .resultados-swiper-chip-content {

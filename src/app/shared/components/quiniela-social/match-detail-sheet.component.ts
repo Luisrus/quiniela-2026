@@ -49,7 +49,7 @@ import { PredRowComponent, type PredictionReactionEvent } from './pred-row.compo
           </span>
           <app-team-flag [name]="match.away.name" [url]="match.away.flag" [size]="24" />
           @if (isLive) {
-            <span style="display: flex; align-items: center; gap: 5px; background: rgba(34,197,94,.12); padding: 3px 8px; border-radius: 10px">
+            <span style="display: flex; align-items: center; gap: 5px; background: color-mix(in srgb, var(--live) 14%, transparent); padding: 3px 8px; border-radius: 10px">
               <app-live-dot [size]="6" />
               @if (match.minute !== null) {
                 <span style="font-size: 11px; color: var(--live); font-weight: 700">{{ match.minute }}'</span>

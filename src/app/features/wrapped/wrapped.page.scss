@@ -89,7 +89,7 @@ h1 {
 }
 
 .wrapped-progress-bar--active {
-  background: rgba(180, 240, 64, 0.45);
+  background: color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
 .wrapped-progress-bar--current {
@@ -107,7 +107,7 @@ h1 {
   border-radius: var(--r-lg);
   background: linear-gradient(
     160deg,
-    rgba(180, 240, 64, 0.1) 0%,
+    color-mix(in srgb, var(--accent) 12%, transparent) 0%,
     rgba(245, 197, 66, 0.06) 45%,
     var(--bg-elevated) 100%
   );

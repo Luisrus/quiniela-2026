@@ -8,17 +8,17 @@
 /* ─── BASE TOKENS (Variation A: Broadcast Dark) ─── */
 :root {
   /* Backgrounds */
-  --bg-base:     #0E1015;
-  --bg-surface:  #1A1D25;
-  --bg-elevated: #22262F;
-  --bg-hover:    #2A2E3A;
-  --bg-border:   #2C303C;
+  --bg-base:     #07120F;
+  --bg-surface:  #0D1F1B;
+  --bg-elevated: #12302C;
+  --bg-hover:    #18423D;
+  --bg-border:   #20514A;
 
-  /* Accent: Lime Verde */
-  --accent:       #B4F040;
-  --accent-dim:   #7DAB1A;
-  --accent-muted: rgba(180, 240, 64, 0.10);
-  --accent-glow:  rgba(180, 240, 64, 0.22);
+  /* Accent: azul selva */
+  --accent:       #38BDF8;
+  --accent-dim:   #0E7490;
+  --accent-muted: rgba(56, 189, 248, 0.12);
+  --accent-glow:  rgba(56, 189, 248, 0.24);
 
   /* Gold / Ámbar */
   --gold:       #F5C542;
@@ -27,13 +27,13 @@
   --gold-glow:  rgba(245, 197, 66, 0.30);
 
   /* Live Green */
-  --live:      #22C55E;
-  --live-glow: rgba(34, 197, 94, 0.28);
+  --live:      #15803D;
+  --live-glow: rgba(21, 128, 61, 0.30);
 
   /* Semantic — puntos */
   --pt-exact:   #F5C542;   /* 3 pts — dorado  */
-  --pt-correct: #B4F040;   /* 1 pt  — lima    */
-  --pt-miss:    #3E4252;   /* 0 pts — gris    */
+  --pt-correct: #2DD4BF;   /* 1 pt  — turquesa */
+  --pt-miss:    #2A3D3B;   /* 0 pts — gris verde */
 
   /* Danger */
   --danger:       #F05A5A;
@@ -43,7 +43,7 @@
   --text-primary:   #EEF0F5;
   --text-secondary: #7A8094;
   --text-tertiary:  #4A4E5C;
-  --text-on-accent: #0C1000;
+  --text-on-accent: #031018;
 
   /* Typography */
   --font-score: 'Barlow Condensed', sans-serif;
@@ -65,7 +65,7 @@
   --sh-raised:  0 4px 24px rgba(0,0,0,0.55);
   --sh-accent:  0 0 20px var(--accent-glow);
   --sh-gold:    0 0 20px var(--gold-glow);
-  --sh-live:    0 0 18px rgba(34,197,94,0.18);
+  --sh-live:    0 0 18px rgba(21,128,61,0.22);
 
   /* Easing */
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -80,18 +80,18 @@
 
 /* ─── VARIATION B: Carbón ─── */
 [data-theme="carbon"] {
-  --bg-base:     #111318;
-  --bg-surface:  #1C2028;
-  --bg-elevated: #252A36;
-  --bg-hover:    #2E3445;
-  --bg-border:   #333848;
-  --accent:      #A8E832;
-  --accent-muted: rgba(168, 232, 50, 0.10);
-  --accent-glow:  rgba(168, 232, 50, 0.20);
+  --bg-base:     #071311;
+  --bg-surface:  #10231F;
+  --bg-elevated: #17352F;
+  --bg-hover:    #1E4941;
+  --bg-border:   #285A52;
+  --accent:      #38BDF8;
+  --accent-muted: rgba(56, 189, 248, 0.12);
+  --accent-glow:  rgba(56, 189, 248, 0.22);
   --gold:        #F0AE20;
   --gold-glow:   rgba(240, 174, 32, 0.35);
   --pt-exact:    #F0AE20;
-  --pt-correct:  #A8E832;
+  --pt-correct:  #2DD4BF;
 }
 
 [data-theme="carbon"] .card {
@@ -138,7 +138,7 @@ input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
 }
 .badge-accent  { background: var(--accent-muted);  color: var(--accent); }
 .badge-gold    { background: var(--gold-muted);    color: var(--gold); }
-.badge-live    { background: rgba(34,197,94,.14);  color: var(--live); }
+.badge-live    { background: color-mix(in srgb, var(--live) 16%, transparent);  color: var(--live); }
 .badge-muted   { background: rgba(255,255,255,.06); color: var(--text-secondary); }
 .badge-danger  { background: var(--danger-muted);  color: var(--danger); }
 

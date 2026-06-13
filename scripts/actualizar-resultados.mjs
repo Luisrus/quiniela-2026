@@ -12,6 +12,13 @@ const FIRESTORE_SCOPE = 'https://www.googleapis.com/auth/datastore';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const DATABASE_ID = '(default)';
 const MAX_BATCH_WRITES = 450;
+const SYNC_CONFIG_PATH = 'config/sync';
+const MINUTE_MS = 60 * 1000;
+const FIRST_LIVE_SYNC_DELAY_MS = 5 * MINUTE_MS;
+const LIVE_SYNC_INTERVAL_MS = 30 * MINUTE_MS;
+const FINAL_SYNC_DELAY_MS = 5 * MINUTE_MS;
+const FINAL_SYNC_WINDOW_MS = 20 * MINUTE_MS;
+const POLL_WINDOW_MS = 7 * MINUTE_MS;
 
 const liveEstados = new Set(['IN_PLAY', 'PAUSED', 'EXTRA_TIME', 'PENALTY_SHOOTOUT', 'LIVE']);
 const finalEstados = new Set(['FINISHED', 'AWARDED']);
@@ -20,54 +27,82 @@ const deleteField = Symbol('deleteField');
 
 export async function runActualizarResultados({ footballDataToken, projectId, accessToken }) {
   const firestore = createFirestoreClient(projectId, accessToken);
+  const now = new Date();
 
   const apiMatches = await fetchFootballDataMatches(footballDataToken);
-  const existingPartidos = await firestore.list('partidos');
-  const existingPartidosById = new Map(existingPartidos.map((doc) => [doc.id, doc.data]));
-  const partidos = apiMatches.map((match) => toPartidoDoc(match, existingPartidosById.get(String(match.id))));
+  const syncState = await getSyncState(firestore);
+  const candidateMatches = apiMatches.filter((match) => partidoRequiereRevision(match, now));
+  const partidosParaSync = candidateMatches
+    .filter((match) => partidoDebeSincronizarse(match, syncState, now))
+    .map((match) => toPartidoDoc(match, syncState, now));
 
-  await upsertPartidos(firestore, partidos);
+  await upsertPartidos(firestore, partidosParaSync);
 
-  let apuestas = [];
-  try {
-    apuestas = await firestore.list('apuestasDia');
-  } catch {
-    console.warn('No se pudieron leer apuestasDia.');
-  }
-
-  const [pronosticos, usuarios] = await Promise.all([
-    firestore.list('pronosticos'),
-    firestore.list('usuarios')
-  ]);
-
-  const pronosticosByPartido = groupBy(pronosticos, (doc) => doc.data.partidoId);
-  const livePartidos = partidos.filter((partido) => partido.estado === 'en_juego');
-  const finalizedPartidos = partidos.filter((partido) =>
+  const livePartidos = partidosParaSync.filter((partido) => partido.estado === 'en_juego');
+  const finalizedPartidos = partidosParaSync.filter((partido) =>
     partido.estado === 'finalizado' &&
-    existingPartidosById.get(partido.id)?.puntosCalculados !== true
+    !syncState.finalizadosCalculados.has(partido.id)
   );
 
-  await actualizarPuntosProvisionales({
-    firestore,
-    livePartidos,
-    pronosticosByPartido,
-    usuarios
-  });
+  let pronosticosByPartido = new Map();
 
-  for (const partido of finalizedPartidos) {
-    await cerrarPartidoFinalizado({
+  if (livePartidos.length > 0) {
+    const livePronosticos = await listPronosticosPorPartidos(firestore, livePartidos.map((partido) => partido.id));
+    const usuarios = await listUsuariosPorIds(firestore, uidsFromPronosticos(livePronosticos));
+    pronosticosByPartido = groupBy(livePronosticos, (doc) => doc.data.partidoId);
+
+    await actualizarPuntosProvisionales({
       firestore,
-      partido,
-      partidos,
-      pronosticos,
+      livePartidos,
       pronosticosByPartido,
-      usuarios,
-      apuestas
+      usuarios
     });
   }
 
+  const partidosTorneo = apiMatches.map((match) =>
+    toPartidoDoc(match, syncState, now)
+  );
+
+  for (const partido of finalizedPartidos) {
+    const pronosticosDelPartido = await firestore.queryCollection(
+      'pronosticos',
+      [{ fieldPath: 'partidoId', op: 'EQUAL', value: partido.id }]
+    );
+    const cierreJornada = cierreDeJornada(partido, partidosTorneo);
+    const pronosticosJornada = cierreJornada
+      ? await listPronosticosPorPartidos(firestore, idsPartidosJornada(partido, partidosTorneo))
+      : pronosticosDelPartido;
+    const apuestas = cierreJornada
+      ? await listApuestasPendientesJornada(firestore, jornadaBadgeKey(partido))
+      : [];
+    const usuarios = await listUsuariosPorIds(firestore, [
+      ...uidsFromPronosticos(pronosticosJornada),
+      ...uidsFromApuestas(apuestas)
+    ]);
+
+    await cerrarPartidoFinalizado({
+      firestore,
+      partido,
+      partidos: partidosTorneo,
+      pronosticos: pronosticosJornada,
+      pronosticosDelPartido,
+      usuarios,
+      apuestas
+    });
+
+    syncState.finalizadosCalculados.add(partido.id);
+  }
+
+  await guardarSyncState(
+    firestore,
+    syncState,
+    partidosParaSync.filter((partido) => partido.estado !== 'finalizado'),
+    now
+  );
+
   console.log(JSON.stringify({
-    partidosActualizados: partidos.length,
+    partidosRevisados: candidateMatches.length,
+    partidosActualizados: partidosParaSync.length,
     partidosEnJuego: livePartidos.length,
     partidosFinalizadosNuevos: finalizedPartidos.length
   }));
@@ -179,6 +214,10 @@ function createFirestoreClient(projectId, accessToken) {
     });
 
     if (!response.ok) {
+      if (response.status === 404 && options.allowNotFound === true) {
+        return null;
+      }
+
       throw new Error(`Firestore fallo ${response.status} ${path}: ${await response.text()}`);
     }
 
@@ -215,6 +254,44 @@ function createFirestoreClient(projectId, accessToken) {
       } while (pageToken);
 
       return result;
+    },
+
+    async getOptional(path, transaction = null) {
+      if (transaction !== null) {
+        const body = await request('/documents:batchGet', {
+          method: 'POST',
+          body: JSON.stringify({
+            documents: [this.nameFor(path)],
+            transaction
+          })
+        });
+        const found = body.find((entry) => entry.found)?.found;
+        return found === undefined ? null : fromDocument(found);
+      }
+
+      const body = await request(`/documents/${path}`, { allowNotFound: true });
+      return body === null ? null : fromDocument(body);
+    },
+
+    async queryCollection(collectionId, filters) {
+      if (filters.length === 0) {
+        return this.list(collectionId);
+      }
+
+      const body = await request('/documents:runQuery', {
+        method: 'POST',
+        body: JSON.stringify({
+          structuredQuery: {
+            from: [{ collectionId }],
+            where: compositeFilter(filters)
+          }
+        })
+      });
+
+      return body
+        .map((entry) => entry.document)
+        .filter((document) => document !== undefined)
+        .map((document) => fromDocument(document));
     },
 
     async get(path, transaction = null) {
@@ -262,7 +339,112 @@ function createFirestoreClient(projectId, accessToken) {
   };
 }
 
+function compositeFilter(filters) {
+  if (filters.length === 1) {
+    return fieldFilter(filters[0]);
+  }
+
+  return {
+    compositeFilter: {
+      op: 'AND',
+      filters: filters.map((filter) => fieldFilter(filter))
+    }
+  };
+}
+
+function fieldFilter(filter) {
+  return {
+    fieldFilter: {
+      field: { fieldPath: filter.fieldPath },
+      op: filter.op,
+      value: toFirestoreValue(filter.value)
+    }
+  };
+}
+
+async function getSyncState(firestore) {
+  const doc = await firestore.getOptional(SYNC_CONFIG_PATH);
+  const data = doc?.data ?? {};
+
+  return {
+    finalizadosCalculados: new Set(normalizeStringArray(data.finalizadosCalculados)),
+    actualizadosPorPartido: normalizeDateRecord(data.actualizadosPorPartido)
+  };
+}
+
+async function guardarSyncState(firestore, syncState, partidos, now) {
+  if (partidos.length === 0) {
+    return;
+  }
+
+  const actualizadosPorPartido = { ...syncState.actualizadosPorPartido };
+
+  for (const partido of partidos) {
+    actualizadosPorPartido[partido.id] = now;
+  }
+
+  await firestore.commit([
+    updateWrite(
+      firestore.nameFor(SYNC_CONFIG_PATH),
+      {
+        finalizadosCalculados: [...syncState.finalizadosCalculados],
+        actualizadosPorPartido,
+        actualizadoEn: now
+      },
+      ['finalizadosCalculados', 'actualizadosPorPartido', 'actualizadoEn']
+    )
+  ]);
+}
+
+async function listPronosticosPorPartidos(firestore, partidoIds) {
+  const docs = await Promise.all(
+    uniqueStrings(partidoIds).map((partidoId) =>
+      firestore.queryCollection('pronosticos', [
+        { fieldPath: 'partidoId', op: 'EQUAL', value: partidoId }
+      ])
+    )
+  );
+
+  return docs.flat();
+}
+
+async function listUsuariosPorIds(firestore, uids) {
+  const docs = await Promise.all(
+    uniqueStrings(uids).map((uid) => firestore.getOptional(`usuarios/${uid}`))
+  );
+
+  return docs.filter((doc) => doc !== null);
+}
+
+function uidsFromPronosticos(pronosticos) {
+  return pronosticos
+    .map((doc) => doc.data.uid)
+    .filter((uid) => typeof uid === 'string' && uid.trim() !== '');
+}
+
+function uidsFromApuestas(apuestas) {
+  return apuestas.flatMap((doc) => [doc.data.retador, doc.data.retado])
+    .filter((uid) => typeof uid === 'string' && uid.trim() !== '');
+}
+
+async function listApuestasPendientesJornada(firestore, jornadaKey) {
+  try {
+    const docs = await firestore.queryCollection('apuestasDia', [
+      { fieldPath: 'jornadaKey', op: 'EQUAL', value: jornadaKey }
+    ]);
+
+    return docs.filter((doc) => doc.data.resultado === 'pendiente');
+  } catch {
+    console.warn('No se pudieron leer apuestasDia.');
+    return [];
+  }
+}
+
 async function upsertPartidos(firestore, partidos) {
+  if (partidos.length === 0) {
+    return;
+  }
+
   const writes = partidos.map((partido) =>
     updateWrite(firestore.nameFor(`partidos/${partido.id}`), partido, Object.keys(partido))
   );
@@ -319,7 +501,7 @@ async function cerrarPartidoFinalizado({
   partido,
   partidos,
   pronosticos,
-  pronosticosByPartido,
+  pronosticosDelPartido,
   usuarios,
   apuestas
 }) {
@@ -329,15 +511,21 @@ async function cerrarPartidoFinalizado({
   }
 
   const transaction = await firestore.beginTransaction();
-  const partidoActual = await firestore.get(`partidos/${partido.id}`, transaction);
+  const [partidoActual, syncActual] = await Promise.all([
+    firestore.get(`partidos/${partido.id}`, transaction),
+    firestore.getOptional(SYNC_CONFIG_PATH, transaction)
+  ]);
 
-  if (partidoActual?.data.puntosCalculados === true) {
+  if (
+    partidoActual?.data.puntosCalculados === true ||
+    normalizeStringArray(syncActual?.data.finalizadosCalculados).includes(partido.id)
+  ) {
+    await marcarPartidoFinalizadoEnSync(firestore, syncActual, partido.id, transaction);
     console.log(`Partido ${partido.id} ya tenia puntosCalculados=true; se omite.`);
     return;
   }
 
   const writes = [];
-  const pronosticosDelPartido = pronosticosByPartido.get(partido.id) ?? [];
   const puntosDefinitivosPorUid = new Map();
 
   for (const pronosticoDoc of pronosticosDelPartido) {
@@ -367,7 +555,7 @@ async function cerrarPartidoFinalizado({
   });
   writes.push(...apuestasWrites);
 
-  const puntosUsuarios = recalcularPuntosUsuarios(pronosticos, partido.id, puntosDefinitivosPorUid, apuestas);
+  const puntosUsuarios = sumarPuntosFinalizados(usuarios, puntosDefinitivosPorUid, apuestas);
   const badgesPorUsuario = calcularBadgesJornada({
     partido,
     partidos,
@@ -441,20 +629,44 @@ async function cerrarPartidoFinalizado({
     Object.keys(partido).concat('puntosCalculados')
   ));
 
+  writes.push(syncFinalizadoWrite(firestore, syncActual, partido.id));
+
   await firestore.commit(writes, transaction);
   console.log(`Puntos definitivos calculados para partido ${partido.id}.`);
 }
 
-function recalcularPuntosUsuarios(pronosticos, partidoIdFinalizado, puntosDefinitivosPorUid, apuestas) {
+async function marcarPartidoFinalizadoEnSync(firestore, syncActual, partidoId, transaction) {
+  await firestore.commit([
+    syncFinalizadoWrite(firestore, syncActual, partidoId)
+  ], transaction);
+}
+
+function syncFinalizadoWrite(firestore, syncActual, partidoId) {
+  const finalizadosCalculados = uniqueStrings([
+    ...normalizeStringArray(syncActual?.data.finalizadosCalculados),
+    partidoId
+  ]);
+  const actualizadosPorPartido = {
+    ...normalizeDateRecord(syncActual?.data.actualizadosPorPartido),
+    [partidoId]: new Date()
+  };
+
+  return updateWrite(
+    firestore.nameFor(SYNC_CONFIG_PATH),
+    {
+      finalizadosCalculados,
+      actualizadosPorPartido,
+      actualizadoEn: new Date()
+    },
+    ['finalizadosCalculados', 'actualizadosPorPartido', 'actualizadoEn']
+  );
+}
+
+function sumarPuntosFinalizados(usuarios, puntosDefinitivosPorUid, apuestas) {
   const puntos = new Map();
 
-  for (const pronosticoDoc of pronosticos) {
-    const uid = pronosticoDoc.data.uid;
-    const valor = pronosticoDoc.data.partidoId === partidoIdFinalizado
-      ? puntosDefinitivosPorUid.get(uid)
-      : pronosticoDoc.data.puntosGanados;
-
-    puntos.set(uid, (puntos.get(uid) ?? 0) + numberOrZero(valor));
+  for (const usuario of usuarios) {
+    puntos.set(usuario.id, numberOrZero(usuario.data.puntos) + numberOrZero(puntosDefinitivosPorUid.get(usuario.id)));
   }
 
   for (const apuestaDoc of apuestas) {
@@ -540,6 +752,22 @@ function calcularBadgesJornada({
   }
 
   return result;
+}
+
+function cierreDeJornada(partido, partidos) {
+  return idsPartidosJornada(partido, partidos).every((partidoId) =>
+    partidoId === partido.id ||
+    partidos.find((item) => item.id === partidoId)?.estado === 'finalizado'
+  );
+}
+
+function idsPartidosJornada(partido, partidos) {
+  return partidos
+    .filter((item) =>
+      item.fase === partido.fase &&
+      String(item.jornada ?? '') === String(partido.jornada ?? '')
+    )
+    .map((item) => item.id);
 }
 
 /**
@@ -794,12 +1022,87 @@ async function resolverApuestasDia({
   return writes;
 }
 
-function toPartidoDoc(match, existing) {
+function partidoRequiereRevision(match, now) {
+  if (liveEstados.has(match.status)) {
+    return livePollProgramado(match, now);
+  }
+
+  if (!finalEstados.has(match.status)) {
+    return false;
+  }
+
+  return finalPollProgramado(match, now);
+}
+
+function partidoDebeSincronizarse(match, syncState, now) {
+  const inicio = parseDate(match.utcDate);
+  const partidoId = String(match.id);
+
+  if (finalEstados.has(match.status)) {
+    if (syncState.finalizadosCalculados.has(partidoId)) {
+      return false;
+    }
+
+    return finalPollProgramado(match, now);
+  }
+
+  if (!liveEstados.has(match.status)) {
+    return false;
+  }
+
+  return inicio === null ||
+    now.getTime() >= inicio.getTime() + FIRST_LIVE_SYNC_DELAY_MS;
+}
+
+function finalReferenceDate(match) {
+  return parseDate(match.lastUpdated) ?? parseDate(match.utcDate);
+}
+
+function livePollProgramado(match, now) {
+  const inicio = parseDate(match.utcDate);
+
+  if (inicio === null) {
+    return true;
+  }
+
+  const elapsed = now.getTime() - inicio.getTime() - FIRST_LIVE_SYNC_DELAY_MS;
+
+  if (elapsed < 0) {
+    return false;
+  }
+
+  return elapsed % LIVE_SYNC_INTERVAL_MS <= POLL_WINDOW_MS;
+}
+
+function finalPollProgramado(match, now) {
+  const referenciaFinal = finalReferenceDate(match);
+
+  if (referenciaFinal === null) {
+    return true;
+  }
+
+  const elapsed = now.getTime() - referenciaFinal.getTime();
+
+  return elapsed >= FINAL_SYNC_DELAY_MS &&
+    elapsed <= FINAL_SYNC_WINDOW_MS;
+}
+
+function parseDate(value) {
+  if (typeof value !== 'string' || value.trim() === '') {
+    return null;
+  }
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function toPartidoDoc(match, syncState, now = new Date()) {
   const score = marcadorActual(match.score);
   const estado = mapEstado(match.status);
+  const partidoId = String(match.id);
 
   return {
-    id: String(match.id),
+    id: partidoId,
     footballDataId: match.id,
     equipoLocal: teamName(match.homeTeam),
     equipoVisitante: teamName(match.awayTeam),
@@ -813,7 +1116,8 @@ function toPartidoDoc(match, existing) {
     golesVisitante: score.visitante,
     fase: mapFase(match.stage),
     jornada: match.matchday ?? match.group ?? match.stage ?? null,
-    puntosCalculados: existing?.puntosCalculados === true
+    puntosCalculados: syncState.finalizadosCalculados.has(partidoId),
+    syncActualizadoEn: now
   };
 }
 
@@ -1024,6 +1328,18 @@ function normalizeStringArray(value) {
   return Array.isArray(value)
     ? value.filter((item) => typeof item === 'string')
     : [];
+}
+
+function normalizeDateRecord(value) {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .map(([key, item]) => [key, item instanceof Date ? item : parseDate(String(item))])
+      .filter(([, item]) => item !== null)
+  );
 }
 
 function uniqueStrings(values) {

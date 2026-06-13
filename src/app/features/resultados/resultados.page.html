@@ -117,7 +117,7 @@
           <button
             type="button"
             (click)="sheetTab.set('comments')"
-            style="padding: 6px 14px; border-radius: var(--r-full); border: 1px solid rgba(180,240,64,0.25); background: var(--accent-muted); color: var(--accent); font-family: var(--font-ui); font-size: 12px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 5px; transition: all 150ms"
+            style="padding: 6px 14px; border-radius: var(--r-full); border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent); background: var(--accent-muted); color: var(--accent); font-family: var(--font-ui); font-size: 12px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 5px; transition: all 150ms"
           >
             Comentar
           </button>
@@ -146,7 +146,7 @@
               <div
                 style="padding: 10px 14px; border-radius: var(--r-card); font-size: 13px; font-weight: 600; line-height: 1.4"
                 [style.background]="item.isMe ? 'var(--accent-muted)' : 'var(--bg-surface)'"
-                [style.border]="item.isMe ? '1px solid rgba(180,240,64,0.25)' : '1px solid var(--bg-border)'"
+                [style.border]="item.isMe ? '1px solid color-mix(in srgb, var(--accent) 25%, transparent)' : '1px solid var(--bg-border)'"
                 [style.color]="item.resultado === 'ganada' ? 'var(--accent)' : item.resultado === 'perdida' ? 'var(--live)' : 'var(--text-secondary)'"
               >
                 {{ item.texto }}
@@ -161,7 +161,7 @@
             <div
               [attr.class]="'card fade-up s' + (i + 1 > 10 ? 10 : i + 1)"
               [style.padding]="'11px 14px'"
-              [style.border]="isMe ? '1px solid rgba(180,240,64,0.25)' : '1px solid transparent'"
+              [style.border]="isMe ? '1px solid color-mix(in srgb, var(--accent) 25%, transparent)' : '1px solid transparent'"
               [style.background]="isMe ? 'var(--accent-muted)' : 'var(--bg-surface)'"
               [style.display]="'flex'"
               [style.align-items]="'center'"

@@ -36,7 +36,7 @@ import { AvatarComponent } from '../quiniela-ui/avatar.component';
           <div
             [style.padding]="'9px 13px'"
             [style.background]="isMe ? 'var(--accent-muted)' : 'var(--bg-elevated)'"
-            [style.border]="isMe ? '1px solid rgba(180,240,64,0.20)' : '1px solid rgba(255,255,255,0.04)'"
+            [style.border]="isMe ? '1px solid color-mix(in srgb, var(--accent) 22%, transparent)' : '1px solid rgba(255,255,255,0.04)'"
             [style.border-radius]="isMe ? '16px 16px 4px 16px' : '16px 16px 16px 4px'"
             [style.font-size.px]="13"
             [style.color]="'var(--text-primary)'"

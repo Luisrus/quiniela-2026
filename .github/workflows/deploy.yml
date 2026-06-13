@@ -50,4 +50,4 @@ jobs:
         run: npm run build
 
       - name: Deploy to Firebase
-        run: npx firebase-tools deploy --only hosting,firestore:rules --token "${{ secrets.FIREBASE_TOKEN }}" --non-interactive
+        run: npx firebase-tools deploy --only hosting,firestore:rules,functions --token "${{ secrets.FIREBASE_TOKEN }}" --non-interactive

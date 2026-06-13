@@ -258,7 +258,7 @@ export class TablaPage {
 
     if (isMe) {
       rowBg = 'var(--accent-muted)';
-      rowBorder = '1px solid rgba(180,240,64,0.25)';
+      rowBorder = '1px solid color-mix(in srgb, var(--accent) 25%, transparent)';
       rowShadow = 'var(--sh-accent)';
     } else if (position === 1) {
       rowBg = 'var(--bg-elevated)';

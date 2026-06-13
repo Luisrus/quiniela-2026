@@ -8,7 +8,7 @@
     </div>
     <div style="display: flex; align-items: center; gap: 6px; margin-top: 4px">
       @if (live().length > 0) {
-        <div style="display: flex; align-items: center; gap: 5px; background: rgba(34,197,94,.12); padding: 4px 10px; border-radius: 20px">
+        <div style="display: flex; align-items: center; gap: 5px; background: color-mix(in srgb, var(--live) 14%, transparent); padding: 4px 10px; border-radius: 20px">
           <app-live-dot [size]="7" />
           <span style="font-size: 11px; color: var(--live); font-weight: 700">{{ live().length }} EN VIVO</span>
         </div>
@@ -28,7 +28,7 @@
 
   @if (tab() === 'upcoming') {
     <div
-      style="margin: 0 20px 10px; padding: 10px 12px; border-radius: 10px; background: var(--accent-muted); border: 1px solid rgba(180,240,64,0.22); flex-shrink: 0"
+      style="margin: 0 20px 10px; padding: 10px 12px; border-radius: 10px; background: var(--accent-muted); border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent); flex-shrink: 0"
     >
       <p style="font-size: 12px; font-weight: 700; color: var(--accent); line-height: 1.4; margin: 0">
         ⏱ {{ pronosticoCierreAviso }}

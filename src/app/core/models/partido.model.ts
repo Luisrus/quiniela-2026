@@ -38,4 +38,5 @@ export interface Partido {
   readonly fase: PartidoFase;
   readonly jornada?: number | string | null;
   readonly puntosCalculados?: boolean;
+  readonly syncActualizadoEn?: Timestamp;
 }

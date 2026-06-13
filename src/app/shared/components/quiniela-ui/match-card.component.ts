@@ -184,7 +184,7 @@ export class MatchCardComponent {
 
   get cardBorder(): string {
     return this.isLive
-      ? '1px solid rgba(34,197,94,0.30)'
+      ? '1px solid color-mix(in srgb, var(--live) 35%, transparent)'
       : '1px solid rgba(255,255,255,0.04)';
   }
 
