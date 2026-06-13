@@ -19,8 +19,6 @@ const LIVE_SYNC_INTERVAL_MS = 30 * MINUTE_MS;
 const FINAL_SYNC_DELAY_MS = 5 * MINUTE_MS;
 const FINAL_SYNC_WINDOW_MS = 20 * MINUTE_MS;
 const POLL_WINDOW_MS = 7 * MINUTE_MS;
-const ACTIVE_HOUR_START = 10;
-const ACTIVE_HOUR_END = 2;
 
 const liveEstados = new Set(['IN_PLAY', 'PAUSED', 'EXTRA_TIME', 'PENALTY_SHOOTOUT', 'LIVE']);
 const finalEstados = new Set(['FINISHED', 'AWARDED']);
@@ -28,37 +26,81 @@ const finalEstados = new Set(['FINISHED', 'AWARDED']);
 const deleteField = Symbol('deleteField');
 const TIMEZONE = 'America/Guatemala';
 
+export async function consultarFootballData(footballDataToken, options = {}) {
+  const now = options.now ?? new Date();
+  const dayKeys = options.dayKeys ?? [];
+  const force = options.force ?? false;
+  const dayKeySet = new Set(dayKeys);
+  const manualMode = dayKeySet.size > 0;
+
+  if (manualMode) {
+    const dateRange = dateRangeFromDayKeys(dayKeySet);
+    const apiMatches = await fetchFootballDataMatches(footballDataToken, dateRange);
+
+    return {
+      dateRange,
+      apiMatches,
+      manualMode: true,
+      hayTrabajoPendiente: true,
+      partidosEnRevision: apiMatches.length
+    };
+  }
+
+  let dateRange = footballDateRange(now, false);
+  let apiMatches = await fetchFootballDataMatches(footballDataToken, dateRange);
+
+  if (hayPartidoEnJuegoApi(apiMatches)) {
+    const extendedRange = footballDateRange(now, true);
+
+    if (extendedRange.dateFrom !== dateRange.dateFrom) {
+      dateRange = extendedRange;
+      apiMatches = await fetchFootballDataMatches(footballDataToken, dateRange);
+    }
+  }
+
+  const partidosEnRevision = apiMatches.filter((match) => partidoRequiereRevision(match, now)).length;
+
+  return {
+    dateRange,
+    apiMatches,
+    manualMode: false,
+    hayTrabajoPendiente: force || partidosEnRevision > 0,
+    partidosEnRevision
+  };
+}
+
 export async function runActualizarResultados({
   footballDataToken,
   projectId,
   accessToken,
   dayKeys = [],
-  force = false
+  force = false,
+  prefetched = null
 }) {
-  const firestore = createFirestoreClient(projectId, accessToken);
   const now = new Date();
   const dayKeySet = new Set(dayKeys);
   const manualMode = dayKeySet.size > 0;
+  const consulta = prefetched ?? await consultarFootballData(footballDataToken, {
+    now,
+    dayKeys,
+    force
+  });
 
-  if (!manualMode && !force) {
-    const motivoOmision = await motivoOmitirSyncAutomatico(firestore, now);
-
-    if (motivoOmision !== null) {
-      console.log(JSON.stringify({
-        modo: 'automatico',
-        estado: 'omitido',
-        motivo: motivoOmision
-      }));
-      return;
-    }
+  if (!consulta.hayTrabajoPendiente) {
+    console.log(JSON.stringify({
+      modo: 'automatico',
+      estado: 'omitido',
+      motivo: 'sin_partidos_en_ventana_api',
+      rangoFechas: consulta.dateRange,
+      partidosApi: consulta.apiMatches.length,
+      partidosEnRevision: consulta.partidosEnRevision
+    }));
+    return;
   }
 
+  const { dateRange, apiMatches } = consulta;
+  const firestore = createFirestoreClient(projectId, accessToken);
   const syncState = await getSyncState(firestore);
-  const hayEnJuego = await hayPartidoEnJuegoFirestore(firestore);
-  const dateRange = manualMode
-    ? dateRangeFromDayKeys(dayKeySet)
-    : footballDateRange(now, hayEnJuego);
-  const apiMatches = await fetchFootballDataMatches(footballDataToken, dateRange);
   const candidateMatches = manualMode
     ? apiMatches.filter((match) => matchEnDayKeys(match, dayKeySet))
     : apiMatches.filter((match) => partidoRequiereRevision(match, now));
@@ -70,11 +112,11 @@ export async function runActualizarResultados({
     )
     .map((match) => toPartidoDoc(match, syncState, now));
 
-  if (!manualMode && partidosParaSync.length === 0) {
+  if (!manualMode && !force && partidosParaSync.length === 0) {
     console.log(JSON.stringify({
       modo: 'automatico',
       estado: 'sin_cambios',
-      motivo: 'ningun_partido_en_ventana',
+      motivo: 'ningun_partido_pendiente_sync_state',
       rangoFechas: dateRange,
       partidosApi: apiMatches.length,
       partidosRevisados: candidateMatches.length
@@ -489,39 +531,8 @@ async function listPartidosJornadaFirestore(firestore, partido) {
   }));
 }
 
-async function hayPartidoEnJuegoFirestore(firestore) {
-  const docs = await firestore.queryCollection('partidos', [
-    { fieldPath: 'estado', op: 'EQUAL', value: 'en_juego' }
-  ], { limit: 1 });
-
-  return docs.length > 0;
-}
-
-async function motivoOmitirSyncAutomatico(firestore, now) {
-  if (estaEnVentanaHorariaActiva(now)) {
-    return null;
-  }
-
-  const hayEnJuego = await hayPartidoEnJuegoFirestore(firestore);
-
-  if (hayEnJuego) {
-    return null;
-  }
-
-  return 'fuera_de_ventana_sin_partidos_en_vivo';
-}
-
-function estaEnVentanaHorariaActiva(now) {
-  const hour = hourInTimezone(now, TIMEZONE);
-  return hour >= ACTIVE_HOUR_START || hour < ACTIVE_HOUR_END;
-}
-
-function hourInTimezone(date, timeZone) {
-  return Number(new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    hour: 'numeric',
-    hour12: false
-  }).format(date));
+function hayPartidoEnJuegoApi(matches) {
+  return matches.some((match) => liveEstados.has(match.status));
 }
 
 function dayKeyInTimezone(date, timeZone) {
@@ -1601,18 +1612,33 @@ function uniqueStrings(values) {
 async function main() {
   loadProjectEnv();
   const footballDataToken = requiredEnv('FOOTBALL_DATA_TOKEN');
-  const serviceAccount = parseServiceAccount(readFirebaseServiceAccountRaw());
-  const accessToken = await createAccessToken(serviceAccount);
-
   const dayKeys = parseSyncDayKeys();
   const force = parseForceFlag();
+  const now = new Date();
+  const consulta = await consultarFootballData(footballDataToken, { now, dayKeys, force });
+
+  if (!consulta.hayTrabajoPendiente) {
+    console.log(JSON.stringify({
+      modo: 'automatico',
+      estado: 'omitido',
+      motivo: 'sin_partidos_en_ventana_api',
+      rangoFechas: consulta.dateRange,
+      partidosApi: consulta.apiMatches.length,
+      partidosEnRevision: consulta.partidosEnRevision
+    }));
+    return;
+  }
+
+  const serviceAccount = parseServiceAccount(readFirebaseServiceAccountRaw());
+  const accessToken = await createAccessToken(serviceAccount);
 
   await runActualizarResultados({
     footballDataToken,
     projectId: serviceAccount.project_id,
     accessToken,
     dayKeys,
-    force
+    force,
+    prefetched: consulta
   });
 }
 
