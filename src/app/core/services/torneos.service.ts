@@ -26,9 +26,10 @@ export class TorneosService {
     this.firestore,
     'torneos'
   ) as CollectionReference<Torneo>;
-  private readonly torneosCache$ = this.createTorneosStream();
+  private torneosCache$: Observable<readonly Torneo[]> | undefined;
 
   torneos$(): Observable<readonly Torneo[]> {
+    this.torneosCache$ ??= this.createTorneosStream();
     return this.torneosCache$;
   }
 

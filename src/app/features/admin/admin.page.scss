@@ -215,6 +215,30 @@ h1 {
   flex-shrink: 0;
 }
 
+.admin-warning {
+  flex-shrink: 0;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--gold) 35%, transparent);
+  border-radius: var(--r-card);
+  background: color-mix(in srgb, var(--gold) 10%, transparent);
+}
+
+.admin-warning-title {
+  margin: 0 0 4px;
+  color: var(--gold);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.admin-warning-text {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .field-label {
   margin: 0;
   color: var(--text-tertiary);

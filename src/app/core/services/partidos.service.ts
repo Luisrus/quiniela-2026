@@ -50,6 +50,7 @@ export class PartidosService {
   private readonly partidosPorEstadoCache = new Map<string, Observable<readonly Partido[]>>();
   private readonly partidosPorIdsCache = new Map<string, Observable<readonly Partido[]>>();
   private readonly partidosPorDiaCache = new Map<string, Observable<readonly Partido[]>>();
+  private readonly partidosPorFaseCache = new Map<string, Observable<readonly Partido[]>>();
   private readonly conteoPorEstadoCache = new Map<string, Observable<number>>();
   private partidosJugadosCache$: Observable<readonly Partido[]> | null = null;
   private conteoJugadosCache$: Observable<number> | null = null;
@@ -219,13 +220,22 @@ export class PartidosService {
   }
 
   partidosPorFase$(fase: PartidoFase): Observable<readonly Partido[]> {
-    const partidosQuery = query(
-      this.partidosCollection,
-      where('fase', '==', fase),
-      orderBy('fechaInicio', 'asc')
+    const cached = this.partidosPorFaseCache.get(fase);
+
+    if (cached !== undefined) {
+      return cached;
+    }
+
+    const stream$ = this.listenPartidosQuery(
+      query(
+        this.partidosCollection,
+        where('fase', '==', fase),
+        orderBy('fechaInicio', 'asc')
+      )
     );
 
-    return this.listenPartidosQuery(partidosQuery);
+    this.partidosPorFaseCache.set(fase, stream$);
+    return stream$;
   }
 
   partido$(id: string): Observable<Partido | undefined> {

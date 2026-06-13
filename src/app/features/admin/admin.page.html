@@ -23,6 +23,14 @@
 
   <main class="admin-list">
     @if (activeTab() === 'resultados') {
+      <div class="admin-warning" role="status">
+        <p class="admin-warning-title">Marcadores automáticos</p>
+        <p class="admin-warning-text">
+          Los resultados llegan solos desde la API (sync del servidor cada ~30 min).
+          No necesitas editarlos aquí salvo una corrección puntual o forzar el recálculo de puntos.
+        </p>
+      </div>
+
       <div class="admin-card admin-filter-card">
         <label class="field-label" for="resultados-filtro">Partidos a cargar</label>
         <select
@@ -31,7 +39,7 @@
           [value]="resultadosFiltro()"
           (change)="cambiarResultadosFiltro($any($event.target).value)"
         >
-          <option value="actuales">Semana + en vivo</option>
+          <option value="actuales">Últimos 3 días</option>
           <option value="dia">Por día</option>
           <option value="fase">Por fase</option>
         </select>

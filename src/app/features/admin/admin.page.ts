@@ -1,6 +1,6 @@
 import { computed, Component, effect, inject, signal, untracked } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
-import { combineLatest, map, of, switchMap } from 'rxjs';
+import { combineLatest, of, switchMap } from 'rxjs';
 import { UpperCasePipe } from '@angular/common';
 
 import type { AdminJugadorUpdate } from '../../core/models/admin.model';
@@ -80,7 +80,7 @@ export class AdminPage {
 
   protected readonly estados = partidoEstados;
   protected readonly fases = partidoFases;
-  protected readonly activeTab = signal<AdminTab>('resultados');
+  protected readonly activeTab = signal<AdminTab>('pronosticos');
   protected readonly selectedPartidoId = signal('');
   protected readonly selectedJugadorUid = signal('');
   protected readonly resultadosFiltro = signal<ResultadosFiltro>('actuales');
@@ -110,10 +110,7 @@ export class AdminPage {
           return this.partidosService.partidosPorFase$(fase);
         }
 
-        return combineLatest([
-          this.partidosService.partidosDeLaSemana$(),
-          this.partidosService.partidosPorEstado$('en_juego')
-        ]).pipe(map(([semana, enVivo]) => uniquePartidos([...semana, ...enVivo])));
+        return this.partidosService.partidosDeLaSemana$();
       })
     ),
     { initialValue: undefined }
@@ -153,13 +150,31 @@ export class AdminPage {
     return undefined;
   });
 
-  private readonly usuariosSource = toSignal(this.usuariosService.usuarios$(), {
-    initialValue: undefined
-  });
+  private readonly usuariosSource = toSignal(
+    toObservable(this.activeTab).pipe(
+      switchMap((tab) => {
+        if (tab === 'jugadores' || tab === 'pronosticos' || tab === 'torneos') {
+          return this.usuariosService.usuarios$();
+        }
 
-  private readonly torneosSource = toSignal(this.torneosService.torneos$(), {
-    initialValue: undefined
-  });
+        return of(undefined);
+      })
+    ),
+    { initialValue: undefined }
+  );
+
+  private readonly torneosSource = toSignal(
+    toObservable(this.activeTab).pipe(
+      switchMap((tab) => {
+        if (tab === 'torneos') {
+          return this.torneosService.torneos$();
+        }
+
+        return of(undefined);
+      })
+    ),
+    { initialValue: undefined }
+  );
 
   private readonly pronosticoSeleccionado$ = combineLatest([
     toObservable(this.activeTab),
@@ -193,10 +208,10 @@ export class AdminPage {
   protected readonly creandoTorneo = signal(false);
 
   protected readonly tabOptions: readonly SegmentedControlOption[] = [
-    { value: 'resultados', label: 'Resultados' },
     { value: 'pronosticos', label: 'Pronósticos' },
     { value: 'jugadores', label: 'Jugadores' },
-    { value: 'torneos', label: 'Torneos' }
+    { value: 'torneos', label: 'Torneos' },
+    { value: 'resultados', label: 'Resultados' }
   ];
 
   protected readonly isLoading = computed(() => {
@@ -361,7 +376,7 @@ export class AdminPage {
     const filtro = this.resultadosFiltro();
 
     if (filtro === 'actuales') {
-      return 'semana + en vivo';
+      return 'últimos 3 días';
     }
 
     if (filtro === 'dia') {
@@ -714,10 +729,6 @@ function isResultadosFiltro(value: string): value is ResultadosFiltro {
 
 function isPronosticosFiltro(value: string): value is PronosticosFiltro {
   return value === 'dia' || value === 'fase';
-}
-
-function uniquePartidos(partidos: readonly Partido[]): readonly Partido[] {
-  return [...new Map(partidos.map((partido) => [partido.id, partido])).values()];
 }
 
 function fechaPartidoMillis(partido: Partido): number {

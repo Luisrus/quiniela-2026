@@ -35,6 +35,7 @@ export class UsuariosService {
   ) as CollectionReference<Usuario>;
   private readonly usuariosCache$ = this.createUsuariosStream();
   private readonly ensuredUids = new Set<string>();
+  private readonly adminStatusCache = new Map<string, boolean>();
 
   usuarios$(): Observable<readonly Usuario[]> {
     return this.usuariosCache$;
@@ -77,14 +78,23 @@ export class UsuariosService {
   }
 
   async esAdmin(uid: string): Promise<boolean> {
+    const cached = this.adminStatusCache.get(uid);
+
+    if (cached !== undefined) {
+      return cached;
+    }
+
     try {
       const snapshot = await getDoc(this.usuarioRef(uid));
 
       if (!snapshot.exists()) {
+        this.adminStatusCache.set(uid, false);
         return false;
       }
 
-      return snapshot.data().esAdmin === true;
+      const esAdmin = snapshot.data().esAdmin === true;
+      this.adminStatusCache.set(uid, esAdmin);
+      return esAdmin;
     } catch (error: unknown) {
       this.errors.report('No se pudo verificar permisos de admin.', error);
       return false;
