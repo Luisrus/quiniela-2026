@@ -206,8 +206,13 @@ h1 {
 }
 
 .admin-picker,
-.admin-invite-form {
+.admin-invite-form,
+.admin-filter-card {
   gap: 10px;
+}
+
+.admin-filter-card {
+  flex-shrink: 0;
 }
 
 .field-label {

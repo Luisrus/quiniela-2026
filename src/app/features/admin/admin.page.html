@@ -22,6 +22,87 @@
   </header>
 
   <main class="admin-list">
+    @if (activeTab() === 'resultados') {
+      <div class="admin-card admin-filter-card">
+        <label class="field-label" for="resultados-filtro">Partidos a cargar</label>
+        <select
+          id="resultados-filtro"
+          class="status-select full-width"
+          [value]="resultadosFiltro()"
+          (change)="cambiarResultadosFiltro($any($event.target).value)"
+        >
+          <option value="actuales">Semana + en vivo</option>
+          <option value="dia">Por día</option>
+          <option value="fase">Por fase</option>
+        </select>
+
+        @if (resultadosFiltro() === 'dia') {
+          <label class="field-label" for="resultados-dia">Día</label>
+          <input
+            id="resultados-dia"
+            type="date"
+            class="text-input"
+            [value]="resultadosDia()"
+            (change)="cambiarResultadosDia($event)"
+          />
+        }
+
+        @if (resultadosFiltro() === 'fase') {
+          <label class="field-label" for="resultados-fase">Fase</label>
+          <select
+            id="resultados-fase"
+            class="status-select full-width"
+            [value]="resultadosFase()"
+            (change)="cambiarResultadosFase($any($event.target).value)"
+          >
+            @for (fase of fases; track fase) {
+              <option [value]="fase">{{ fase }}</option>
+            }
+          </select>
+        }
+      </div>
+    }
+
+    @if (activeTab() === 'pronosticos') {
+      <div class="admin-card admin-filter-card">
+        <label class="field-label" for="pronosticos-filtro">Partidos a cargar</label>
+        <select
+          id="pronosticos-filtro"
+          class="status-select full-width"
+          [value]="pronosticosFiltro()"
+          (change)="cambiarPronosticosFiltro($any($event.target).value)"
+        >
+          <option value="dia">Por día</option>
+          <option value="fase">Por fase</option>
+        </select>
+
+        @if (pronosticosFiltro() === 'dia') {
+          <label class="field-label" for="pronosticos-dia">Día</label>
+          <input
+            id="pronosticos-dia"
+            type="date"
+            class="text-input"
+            [value]="pronosticosDia()"
+            (change)="cambiarPronosticosDia($event)"
+          />
+        }
+
+        @if (pronosticosFiltro() === 'fase') {
+          <label class="field-label" for="pronosticos-fase">Fase</label>
+          <select
+            id="pronosticos-fase"
+            class="status-select full-width"
+            [value]="pronosticosFase()"
+            (change)="cambiarPronosticosFase($any($event.target).value)"
+          >
+            @for (fase of fases; track fase) {
+              <option [value]="fase">{{ fase }}</option>
+            }
+          </select>
+        }
+      </div>
+    }
+
     @if (isLoading()) {
       @for (row of skeletonRows; track row) {
         <app-skeleton-card />

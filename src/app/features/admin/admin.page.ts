@@ -1,13 +1,15 @@
 import { computed, Component, effect, inject, signal, untracked } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
-import { combineLatest, of, switchMap } from 'rxjs';
+import { combineLatest, map, of, switchMap } from 'rxjs';
 import { UpperCasePipe } from '@angular/common';
 
 import type { AdminJugadorUpdate } from '../../core/models/admin.model';
 import {
+  partidoFases,
   partidoEstados,
   type Partido,
-  type PartidoEstado
+  type PartidoEstado,
+  type PartidoFase
 } from '../../core/models/partido.model';
 import type { Pronostico } from '../../core/models/pronostico.model';
 import type { Usuario, UsuarioTipo } from '../../core/models/usuario.model';
@@ -25,9 +27,11 @@ import { SkeletonCardComponent } from '../../shared/components/quiniela-ui/skele
 import { TeamFlagComponent } from '../../shared/components/quiniela-ui/team-flag.component';
 import { TorneosService } from '../../core/services/torneos.service';
 import type { Torneo } from '../../core/models/torneo.model';
-import { partidoFases } from '../../core/models/partido.model';
+import { todayDayKey } from '../../core/utils/partido-dia.util';
 
 type AdminTab = 'resultados' | 'pronosticos' | 'jugadores' | 'torneos';
+type ResultadosFiltro = 'actuales' | 'dia' | 'fase';
+type PronosticosFiltro = 'dia' | 'fase';
 type DraftsPartidos = Readonly<Record<string, PartidoDraft>>;
 type JugadorDrafts = Readonly<Record<string, JugadorDraft>>;
 type ScoreSide = 'local' | 'visitante';
@@ -79,9 +83,74 @@ export class AdminPage {
   protected readonly activeTab = signal<AdminTab>('resultados');
   protected readonly selectedPartidoId = signal('');
   protected readonly selectedJugadorUid = signal('');
+  protected readonly resultadosFiltro = signal<ResultadosFiltro>('actuales');
+  protected readonly resultadosDia = signal(todayDayKey());
+  protected readonly resultadosFase = signal<PartidoFase>('grupos');
+  protected readonly pronosticosFiltro = signal<PronosticosFiltro>('dia');
+  protected readonly pronosticosDia = signal(todayDayKey());
+  protected readonly pronosticosFase = signal<PartidoFase>('grupos');
 
-  private readonly partidosSource = toSignal(this.partidosService.partidos$(), {
-    initialValue: undefined
+  private readonly resultadosPartidosSource = toSignal(
+    combineLatest([
+      toObservable(this.activeTab),
+      toObservable(this.resultadosFiltro),
+      toObservable(this.resultadosDia),
+      toObservable(this.resultadosFase)
+    ]).pipe(
+      switchMap(([tab, filtro, dia, fase]) => {
+        if (tab !== 'resultados') {
+          return of(undefined);
+        }
+
+        if (filtro === 'dia') {
+          return this.partidosService.partidosPorDia$(dia);
+        }
+
+        if (filtro === 'fase') {
+          return this.partidosService.partidosPorFase$(fase);
+        }
+
+        return combineLatest([
+          this.partidosService.partidosDeLaSemana$(),
+          this.partidosService.partidosPorEstado$('en_juego')
+        ]).pipe(map(([semana, enVivo]) => uniquePartidos([...semana, ...enVivo])));
+      })
+    ),
+    { initialValue: undefined }
+  );
+
+  private readonly pronosticosPartidosSource = toSignal(
+    combineLatest([
+      toObservable(this.activeTab),
+      toObservable(this.pronosticosFiltro),
+      toObservable(this.pronosticosDia),
+      toObservable(this.pronosticosFase)
+    ]).pipe(
+      switchMap(([tab, filtro, dia, fase]) => {
+        if (tab !== 'pronosticos') {
+          return of(undefined);
+        }
+
+        return filtro === 'dia'
+          ? this.partidosService.partidosPorDia$(dia)
+          : this.partidosService.partidosPorFase$(fase);
+      })
+    ),
+    { initialValue: undefined }
+  );
+
+  private readonly partidosSource = computed(() => {
+    const tab = this.activeTab();
+
+    if (tab === 'resultados') {
+      return this.resultadosPartidosSource();
+    }
+
+    if (tab === 'pronosticos') {
+      return this.pronosticosPartidosSource();
+    }
+
+    return undefined;
   });
 
   private readonly usuariosSource = toSignal(this.usuariosService.usuarios$(), {
@@ -183,12 +252,20 @@ export class AdminPage {
       const jugadores = this.jugadores();
 
       if (tab === 'pronosticos' && partidos.length > 0 && jugadores.length > 0) {
-        if (this.selectedPartidoId() === '') {
+        const selectedPartidoId = this.selectedPartidoId();
+        const selectedExists = partidos.some((partido) => partido.id === selectedPartidoId);
+
+        if (selectedPartidoId === '' || !selectedExists) {
           this.selectedPartidoId.set(partidos[0]!.id);
         }
+
         if (this.selectedJugadorUid() === '') {
           this.selectedJugadorUid.set(jugadores[0]!.uid);
         }
+      }
+
+      if (tab === 'pronosticos' && partidos.length === 0 && this.selectedPartidoId() !== '') {
+        this.selectedPartidoId.set('');
       }
     }, { allowSignalWrites: true });
 
@@ -241,6 +318,63 @@ export class AdminPage {
     }
 
     this.activeTab.set(tab);
+  }
+
+  protected cambiarResultadosFiltro(value: string): void {
+    if (isResultadosFiltro(value)) {
+      this.resultadosFiltro.set(value);
+    }
+  }
+
+  protected cambiarResultadosDia(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    this.resultadosDia.set(input.value || todayDayKey());
+  }
+
+  protected cambiarResultadosFase(value: string): void {
+    if (isPartidoFase(value)) {
+      this.resultadosFase.set(value);
+    }
+  }
+
+  protected cambiarPronosticosFiltro(value: string): void {
+    if (isPronosticosFiltro(value)) {
+      this.pronosticosFiltro.set(value);
+      this.selectedPartidoId.set('');
+    }
+  }
+
+  protected cambiarPronosticosDia(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    this.pronosticosDia.set(input.value || todayDayKey());
+    this.selectedPartidoId.set('');
+  }
+
+  protected cambiarPronosticosFase(value: string): void {
+    if (isPartidoFase(value)) {
+      this.pronosticosFase.set(value);
+      this.selectedPartidoId.set('');
+    }
+  }
+
+  protected resultadosFiltroLabel(): string {
+    const filtro = this.resultadosFiltro();
+
+    if (filtro === 'actuales') {
+      return 'semana + en vivo';
+    }
+
+    if (filtro === 'dia') {
+      return `día ${this.resultadosDia()}`;
+    }
+
+    return `fase ${this.resultadosFase()}`;
+  }
+
+  protected pronosticosFiltroLabel(): string {
+    return this.pronosticosFiltro() === 'dia'
+      ? `día ${this.pronosticosDia()}`
+      : `fase ${this.pronosticosFase()}`;
   }
 
   protected seleccionarPartido(partidoId: string): void {
@@ -566,8 +700,24 @@ function isPartidoEstado(value: string): value is PartidoEstado {
   return (partidoEstados as readonly string[]).includes(value);
 }
 
+function isPartidoFase(value: string): value is PartidoFase {
+  return (partidoFases as readonly string[]).includes(value);
+}
+
 function isAdminTab(value: string): value is AdminTab {
   return value === 'resultados' || value === 'pronosticos' || value === 'jugadores' || value === 'torneos';
+}
+
+function isResultadosFiltro(value: string): value is ResultadosFiltro {
+  return value === 'actuales' || value === 'dia' || value === 'fase';
+}
+
+function isPronosticosFiltro(value: string): value is PronosticosFiltro {
+  return value === 'dia' || value === 'fase';
+}
+
+function uniquePartidos(partidos: readonly Partido[]): readonly Partido[] {
+  return [...new Map(partidos.map((partido) => [partido.id, partido])).values()];
 }
 
 function fechaPartidoMillis(partido: Partido): number {
