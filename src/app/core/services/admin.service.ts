@@ -61,6 +61,18 @@ export class AdminService {
     this.firestore,
     'usuarios'
   ) as CollectionReference<Usuario>;
+  private readonly torneosCollection = collection(
+    this.firestore,
+    'torneos'
+  ) as CollectionReference<Torneo>;
+  private torneosCache: Promise<readonly Torneo[]> | null = null;
+
+  private getTorneos(): Promise<readonly Torneo[]> {
+    this.torneosCache ??= getDocs(this.torneosCollection).then(
+      (snapshot) => snapshot.docs.map((d) => d.data())
+    );
+    return this.torneosCache;
+  }
 
   async crearInvitado(nombre: string): Promise<string> {
     const trimmed = nombre.trim();
@@ -179,15 +191,14 @@ export class AdminService {
       this.pronosticosCollection,
       where('partidoId', '==', input.partidoId)
     );
-    const torneosCollection = collection(this.firestore, 'torneos') as CollectionReference<Torneo>;
     const [
       partidoActualSnapshot,
       pronosticosDelPartidoSnapshot,
-      torneosSnapshot
+      torneos
     ] = await Promise.all([
       getDoc(partidoRef),
       getDocs(pronosticosDelPartidoQuery),
-      getDocs(torneosCollection)
+      this.getTorneos()
     ]);
 
     if (!partidoActualSnapshot.exists()) {
@@ -195,7 +206,6 @@ export class AdminService {
     }
 
     const partidoActual = partidoActualSnapshot.data();
-    const torneos = torneosSnapshot.docs.map((torneoDoc) => torneoDoc.data());
     const puntosDeltaPorUsuario = new Map<string, number>();
     const puntosTorneoDeltaPorUsuario = new Map<string, Record<string, number>>();
     const puntosPartidoPorUid = new Map<string, number>();

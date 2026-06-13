@@ -69,7 +69,7 @@ export class ComentariosService {
       collectionData(comentariosQuery, { idField: 'id' }) as Observable<readonly Comentario[]>,
       [] as readonly Comentario[],
       'No se pudieron cargar los comentarios del partido. Silencio incómodo.'
-    ).pipe(shareReplay({ bufferSize: 1, refCount: false }));
+    ).pipe(shareReplay({ bufferSize: 1, refCount: true }));
 
     this.comentariosPorPartidoCache.set(partidoId, stream$);
     return stream$;

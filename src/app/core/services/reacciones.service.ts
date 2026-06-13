@@ -116,7 +116,7 @@ export class ReaccionesService {
         ? batchStreams[0]
         : combineLatest(batchStreams).pipe(
             map((groups) => groups.flat()),
-            shareReplay({ bufferSize: 1, refCount: false })
+            shareReplay({ bufferSize: 1, refCount: true })
           );
 
     this.reaccionesPorTargetsCache.set(cacheKey, stream$);
@@ -191,7 +191,7 @@ export class ReaccionesService {
         .pipe(map((items) => items.map((item) => this.toReaccion(item)))),
       [] as readonly Reaccion[],
       'No se pudieron cargar las reacciones. La ola se quedó sentada.'
-    ).pipe(shareReplay({ bufferSize: 1, refCount: false }));
+    ).pipe(shareReplay({ bufferSize: 1, refCount: true }));
   }
 
   private reaccionRef(

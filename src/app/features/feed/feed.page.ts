@@ -4,11 +4,11 @@ import { of, switchMap } from 'rxjs';
 
 import { buildPronosticoId } from '../../core/models/pronostico.model';
 import { AuthService } from '../../core/services/auth.service';
+import { uniqueStrings } from '../../core/utils/partido-dia.util';
 import { PartidosService } from '../../core/services/partidos.service';
 import { PronosticosService } from '../../core/services/pronosticos.service';
 import { ReaccionesService } from '../../core/services/reacciones.service';
 import { UsuariosService } from '../../core/services/usuarios.service';
-import { uniqueStrings } from '../../core/utils/partido-dia.util';
 import { PredictionReactionsComponent } from '../../shared/components/quiniela-social/prediction-reactions.component';
 import { AvatarComponent } from '../../shared/components/quiniela-ui/avatar.component';
 import { EmptyStateComponent } from '../../shared/components/quiniela-ui/empty-state.component';
@@ -46,30 +46,8 @@ export class FeedPage {
   private readonly partidosSource = toSignal(this.partidosService.partidosDeLaSemana$(), {
     initialValue: undefined
   });
-  private readonly partidoIds = computed(() =>
-    uniqueStrings((this.partidosSource() ?? []).map((partido) => partido.id))
-  );
-  private readonly pronosticosLoadKey = computed(() => {
-    if (this.partidosSource() === undefined) {
-      return undefined;
-    }
-
-    return this.partidoIds().join('|');
-  });
-  private readonly pronosticosSource = toSignal(
-    toObservable(this.pronosticosLoadKey).pipe(
-      switchMap((loadKey) => {
-        if (loadKey === undefined) {
-          return of(undefined);
-        }
-
-        if (loadKey === '') {
-          return of([] as const);
-        }
-
-        return this.pronosticosService.pronosticosPorPartidos$(loadKey.split('|'));
-      })
-    ),
+  private readonly pronosticosConFraseSource = toSignal(
+    this.pronosticosService.pronosticosConFrase$(),
     { initialValue: undefined }
   );
   private readonly usuariosSource = toSignal(this.usuariosService.usuarios$(), {
@@ -82,7 +60,7 @@ export class FeedPage {
 
   protected readonly isLoading = computed(() =>
     this.partidosSource() === undefined ||
-    this.pronosticosSource() === undefined ||
+    this.pronosticosConFraseSource() === undefined ||
     this.usuariosSource() === undefined
   );
 
@@ -95,8 +73,7 @@ export class FeedPage {
     const partidosById = new Map(partidos.map((partido) => [partido.id, partido]));
     const playersById = playerMap(this.players());
 
-    return (this.pronosticosSource() ?? [])
-      .filter((pronostico) => (pronostico.frase?.trim().length ?? 0) > 0)
+    return (this.pronosticosConFraseSource() ?? [])
       .map((pronostico) => {
         const partido = partidosById.get(pronostico.partidoId);
         const player = playersById.get(pronostico.uid);
