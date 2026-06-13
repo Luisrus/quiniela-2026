@@ -75,7 +75,7 @@ export class PerfilPage {
     initialValue: undefined
   });
   private readonly conteoProgramadosSource = toSignal(
-    this.partidosService.conteoPorEstado$('programado'),
+    this.partidosService.conteoProgramadosSemana$(),
     { initialValue: undefined }
   );
   private readonly especialesSource = toSignal(this.especialesService.misPronosticosEspeciales$(), {
@@ -146,7 +146,7 @@ export class PerfilPage {
     toObservable(this.apuestaSheetOpen).pipe(
       switchMap((open) =>
         open
-          ? this.partidosService.partidosPorEstado$('programado')
+          ? this.partidosService.partidosProgramadosSemana$()
           : of([] as const)
       )
     ),

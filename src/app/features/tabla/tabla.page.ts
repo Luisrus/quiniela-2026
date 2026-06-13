@@ -30,6 +30,9 @@ interface TablaPlayer extends UiPlayer {
 
 type TablaRowVariant = 'main' | 'guest';
 
+const CHART_START_LABEL = 'Inicio';
+const CHART_NOW_LABEL = 'Ahora';
+
 interface TablaRowContext {
   readonly $implicit: TablaPlayer;
   readonly position: number;
@@ -132,59 +135,105 @@ export class TablaPage {
       tooltip: { mode: 'index', intersect: false }
     },
     scales: {
-      x: { ticks: { color: 'var(--text-secondary)', font: { family: 'var(--font-ui)' } }, grid: { color: 'rgba(255, 255, 255, 0.05)' } },
-      y: { beginAtZero: true, ticks: { color: 'var(--text-secondary)', font: { family: 'var(--font-ui)' } }, grid: { color: 'rgba(255, 255, 255, 0.05)' } }
+      x: {
+        offset: true,
+        ticks: { color: 'var(--text-secondary)', font: { family: 'var(--font-ui)' }, maxRotation: 0 },
+        grid: { color: 'rgba(255, 255, 255, 0.05)' }
+      },
+      y: {
+        beginAtZero: true,
+        ticks: { color: 'var(--text-secondary)', font: { family: 'var(--font-ui)' } },
+        grid: { color: 'rgba(255, 255, 255, 0.05)' }
+      }
+    },
+    elements: {
+      line: { tension: 0.3, borderWidth: 2 },
+      point: { radius: 4, hoverRadius: 6 }
     }
   };
 
   protected readonly chartData = computed<ChartConfiguration<'line'>['data'] | undefined>(() => {
     const usuarios = this.titularesPlayers();
     const topUsuarios = usuarios.slice(0, 10);
-    
-    if (topUsuarios.length === 0) return undefined;
 
-    const labels = [
+    if (topUsuarios.length === 0) {
+      return undefined;
+    }
+
+    const jornadaLabels = [
       ...new Set(topUsuarios.flatMap((player) =>
         player.historialPuntos.map((entry) => entry.jornadaKey)
       ))
     ].sort(compareJornadaKeys);
 
-    // Mapear partidoId -> jornadaKey para partidos finalizados y válidos para el torneo
-    if (labels.length === 0) return undefined;
+    const hasScores = topUsuarios.some((player) =>
+      player.liveTotal > 0 || player.historialPuntos.length > 0
+    );
+
+    if (!hasScores) {
+      return undefined;
+    }
+
+    const showNow = topUsuarios.some((player) => {
+      const lastHistorial = player.historialPuntos.at(-1)?.puntos ?? 0;
+      return player.liveTotal !== lastHistorial;
+    });
+
+    const labels = jornadaLabels.length === 0
+      ? [CHART_START_LABEL, CHART_NOW_LABEL]
+      : [
+          CHART_START_LABEL,
+          ...jornadaLabels,
+          ...(showNow ? [CHART_NOW_LABEL] : [])
+        ];
 
     const colors = [
       '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
       '#06b6d4', '#f97316', '#d946ef', '#84cc16', '#6366f1'
     ];
 
-    let datasets = topUsuarios.map((p, index) => {
+    let datasets = topUsuarios.map((player, index) => {
       const puntosPorJornada = new Map(
-        p.historialPuntos.map((entry) => [entry.jornadaKey, entry.puntos])
+        player.historialPuntos.map((entry) => [entry.jornadaKey, entry.puntos])
       );
 
       let lastScore = 0;
-      const data = labels.map(label => {
+      const data = labels.map((label) => {
+        if (label === CHART_START_LABEL) {
+          return 0;
+        }
+
+        if (label === CHART_NOW_LABEL) {
+          return player.liveTotal;
+        }
+
         lastScore = puntosPorJornada.get(label) ?? lastScore;
         return lastScore;
       });
 
-      const isMe = p.id === this.userId();
+      const isMe = player.id === this.userId();
+      const color = colors[index % colors.length];
 
       return {
         data,
-        label: p.name + (isMe ? ' (Tú)' : ''),
+        label: player.name + (isMe ? ' (Tú)' : ''),
         isMe,
-        borderColor: colors[index % colors.length],
-        backgroundColor: colors[index % colors.length] + '20',
-        borderWidth: 3,
-        pointBackgroundColor: colors[index % colors.length],
-        tension: 0.4,
-        fill: true,
+        borderColor: color,
+        backgroundColor: color + '33',
+        borderWidth: isMe ? 3 : 2,
+        pointBackgroundColor: color,
+        pointBorderColor: color,
+        tension: 0.3,
+        fill: false
       };
     });
 
     if (this.chartFilter() === 'mio') {
-      datasets = datasets.filter(d => d.isMe);
+      datasets = datasets.filter((dataset) => dataset.isMe);
+    }
+
+    if (datasets.length === 0) {
+      return undefined;
     }
 
     return { labels, datasets };

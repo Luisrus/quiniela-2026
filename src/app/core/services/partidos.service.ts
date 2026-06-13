@@ -28,7 +28,7 @@ import {
 
 import { FASES_DESDE_OCTAVOS } from '../config/partido-fases.config';
 import type { Partido, PartidoEstado, PartidoFase } from '../models/partido.model';
-import { dayKeyBounds, todayDayKey, uniqueStrings } from '../utils/partido-dia.util';
+import { dayKeyBounds, todayDayKey, uniqueStrings, weekDateBounds, weekRangeKey } from '../utils/partido-dia.util';
 import { FirestoreErrorService } from './firestore-error.service';
 
 const DOCUMENT_ID_BATCH = 30;
@@ -81,6 +81,23 @@ export class PartidosService {
           orderBy('fechaInicio', direction)
         )
       )
+    );
+  }
+
+  /** Programados con fechaInicio en los próximos 7 días (hoy incluido). */
+  partidosProgramadosSemana$(): Observable<readonly Partido[]> {
+    const cacheKey = `programado_semana_${weekRangeKey(todayDayKey())}`;
+
+    return this.getOrCreatePartidosPorEstado(cacheKey, () =>
+      this.listenPartidosQuery(this.programadosSemanaQuery())
+    );
+  }
+
+  conteoProgramadosSemana$(): Observable<number> {
+    const cacheKey = `programado_semana_${weekRangeKey(todayDayKey())}`;
+
+    return this.getOrCreateConteo(cacheKey, () =>
+      this.countQuery(this.programadosSemanaQuery())
     );
   }
 
@@ -321,6 +338,18 @@ export class PartidosService {
 
   private partidoRef(id: string): DocumentReference<Partido> {
     return doc(this.firestore, 'partidos', id) as DocumentReference<Partido>;
+  }
+
+  private programadosSemanaQuery(): FirestoreQuery<Partido> {
+    const { start, end } = weekDateBounds(todayDayKey());
+
+    return query(
+      this.partidosCollection,
+      where('estado', '==', 'programado'),
+      where('fechaInicio', '>=', Timestamp.fromDate(start)),
+      where('fechaInicio', '<', Timestamp.fromDate(end)),
+      orderBy('fechaInicio', 'asc')
+    );
   }
 }
 

@@ -1,4 +1,5 @@
 const TIMEZONE = 'America/Guatemala';
+const WEEK_DAYS = 7;
 
 export function dayKeyFromDate(date: Date): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: TIMEZONE }).format(date);
@@ -36,4 +37,39 @@ export function dayKeysFromTo(fromDayKey: string, toDayKey: string): readonly st
 
 export function uniqueStrings(values: readonly string[]): readonly string[] {
   return [...new Set(values.filter((value) => value.trim() !== ''))];
+}
+
+/** Hoy + los próximos 6 días (7 en total), zona Guatemala. */
+export function weekDayKeys(fromDayKey: string = todayDayKey()): readonly string[] {
+  const [year, month, day] = fromDayKey.split('-').map(Number);
+  const endDate = new Date(Date.UTC(year, month - 1, day + WEEK_DAYS - 1, 12, 0, 0, 0));
+  const toDayKey = dayKeyFromDate(endDate);
+
+  return dayKeysFromTo(fromDayKey, toDayKey);
+}
+
+export function weekDateBounds(fromDayKey: string = todayDayKey()): {
+  readonly start: Date;
+  readonly end: Date;
+} {
+  const keys = weekDayKeys(fromDayKey);
+  const first = keys[0];
+  const last = keys[keys.length - 1];
+
+  if (first === undefined || last === undefined) {
+    return dayKeyBounds(fromDayKey);
+  }
+
+  return {
+    start: dayKeyBounds(first).start,
+    end: dayKeyBounds(last).end
+  };
+}
+
+export function weekRangeKey(fromDayKey: string = todayDayKey()): string {
+  const keys = weekDayKeys(fromDayKey);
+  const first = keys[0] ?? fromDayKey;
+  const last = keys[keys.length - 1] ?? fromDayKey;
+
+  return `${first}_${last}`;
 }

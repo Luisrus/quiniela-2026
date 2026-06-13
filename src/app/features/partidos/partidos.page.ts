@@ -67,7 +67,7 @@ export class PartidosPage {
     initialValue: undefined
   });
   private readonly conteoUpcomingSource = toSignal(
-    this.partidosService.conteoPorEstado$('programado'),
+    this.partidosService.conteoProgramadosSemana$(),
     { initialValue: undefined }
   );
   private readonly conteoLiveSource = toSignal(
@@ -254,7 +254,7 @@ export class PartidosPage {
       return this.partidosService.partidosJugados$();
     }
 
-    return this.partidosService.partidosPorEstado$('programado');
+    return this.partidosService.partidosProgramadosSemana$();
   }
 
   private markDirty(matchId: string): void {
