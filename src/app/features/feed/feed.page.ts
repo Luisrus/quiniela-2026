@@ -16,7 +16,6 @@ import { SkeletonCardComponent } from '../../shared/components/quiniela-ui/skele
 import { TeamFlagComponent } from '../../shared/components/quiniela-ui/team-flag.component';
 import type { UiFeedItem } from '../../shared/models/quiniela-view.model';
 import {
-  currentReaction,
   playerMap,
   toPredictionResult,
   toUiMatch,
@@ -26,7 +25,7 @@ import {
 @Component({
   selector: 'app-feed-page',
   standalone: true,
-  host: { style: 'display: block; height: 100%' },
+  host: { style: 'display: block; min-height: 0; flex: 1' },
   imports: [
     AvatarComponent,
     EmptyStateComponent,
@@ -34,7 +33,8 @@ import {
     SkeletonCardComponent,
     TeamFlagComponent
   ],
-  templateUrl: './feed.page.html'
+  templateUrl: './feed.page.html',
+  styleUrl: './feed.page.scss'
 })
 export class FeedPage {
   private readonly auth = inject(AuthService);
@@ -139,35 +139,44 @@ export class FeedPage {
     { initialValue: [] as const }
   );
 
-  protected reactionCountsFor(item: UiFeedItem): Readonly<Record<string, number>> {
-    const targetId = reactionTargetIdFor(item);
-    const counts: Record<string, number> = {};
+  protected readonly feedReactionCounts = computed(() => {
+    const result: Record<string, Record<string, number>> = {};
 
-    for (const reaction of this.reaccionesSource() ?? []) {
-      if (reaction.targetTipo !== 'pronostico' || reaction.targetId !== targetId) {
+    for (const reaction of this.reaccionesSource()) {
+      if (reaction.targetTipo !== 'pronostico') {
         continue;
       }
 
+      const counts = result[reaction.targetId] ?? {};
       counts[reaction.emoji] = (counts[reaction.emoji] ?? 0) + 1;
+      result[reaction.targetId] = counts;
     }
 
-    return counts;
-  }
+    return result;
+  });
 
-  protected myReactionFor(item: UiFeedItem): string | null {
-    const targetId = reactionTargetIdFor(item);
+  protected readonly feedMyReactions = computed(() => {
+    const uid = this.userId();
+    const result: Record<string, string> = {};
 
-    return currentReaction(
-      this.reaccionesSource() ?? [],
-      'pronostico',
-      targetId,
-      this.userId()
-    );
-  }
+    if (uid === '') {
+      return result;
+    }
+
+    for (const reaction of this.reaccionesSource()) {
+      if (reaction.targetTipo !== 'pronostico' || reaction.uid !== uid) {
+        continue;
+      }
+
+      result[reaction.targetId] = reaction.emoji;
+    }
+
+    return result;
+  });
 
   protected async handleReact(item: UiFeedItem, emoji: string): Promise<void> {
     const targetId = reactionTargetIdFor(item);
-    const current = this.myReactionFor(item);
+    const current = this.feedMyReactions()[targetId] ?? null;
 
     if (current === emoji) {
       await this.reaccionesService.borrarMiReaccion('pronostico', targetId);

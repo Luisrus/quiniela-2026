@@ -92,7 +92,7 @@ export class ReaccionesService {
       return cached;
     }
 
-    const batches = chunkArray(ids, 30);
+    const batches = chunkArray(ids, 10);
     const batchStreams = batches.map((batch) => {
       const batchKey = `${targetTipo}:batch:${batch.join('|')}`;
       const cachedBatch = this.reaccionesPorBatchCache.get(batchKey);

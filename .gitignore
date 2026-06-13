@@ -16,6 +16,7 @@ yarn-error.log*
 
 # Credenciales locales (nunca subir)
 src/environments/environment.development.ts
+emulator-data/
 tokenfootball.txt
 *firebase-adminsdk*.json
 service-account.json

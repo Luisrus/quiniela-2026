@@ -1,0 +1,19 @@
+:host {
+  display: block;
+  min-height: 0;
+  flex: 1;
+}
+
+.feed-card {
+  background: var(--bg-surface);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-card);
+  overflow: visible;
+}
+
+.feed-list {
+  padding: 2px 20px calc(20px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}

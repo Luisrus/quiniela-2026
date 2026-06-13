@@ -2,6 +2,7 @@ import { inject, Injectable } from '@angular/core';
 import { getToken, Messaging, onMessage } from '@angular/fire/messaging';
 
 import { environment } from '../../../environments/environment';
+import type { AppEnvironment } from '../../../environments/environment.model';
 import { ToastService } from './toast.service';
 import { UsuariosService } from './usuarios.service';
 
@@ -11,12 +12,17 @@ export type MessagingEstado = 'activo' | 'denegado' | 'no_soportado' | 'pendient
   providedIn: 'root'
 })
 export class MessagingService {
-  private readonly messaging = inject(Messaging);
+  private readonly appEnvironment = environment as AppEnvironment;
+  private readonly messaging = inject(Messaging, { optional: true });
   private readonly usuariosService = inject(UsuariosService);
   private readonly toasts = inject(ToastService);
   private escuchaIniciada = false;
 
   esSoportado(): boolean {
+    if (this.appEnvironment.useEmulators) {
+      return false;
+    }
+
     return typeof window !== 'undefined' &&
       'Notification' in window &&
       'serviceWorker' in navigator;
@@ -39,7 +45,7 @@ export class MessagingService {
   }
 
   iniciarEscuchaPrimerPlano(): void {
-    if (this.escuchaIniciada || !this.esSoportado()) {
+    if (this.escuchaIniciada || !this.esSoportado() || this.messaging === null) {
       return;
     }
 
@@ -52,7 +58,7 @@ export class MessagingService {
   }
 
   async solicitarPermisoYGuardarToken(): Promise<boolean> {
-    if (!this.esSoportado()) {
+    if (!this.esSoportado() || this.messaging === null) {
       return false;
     }
 

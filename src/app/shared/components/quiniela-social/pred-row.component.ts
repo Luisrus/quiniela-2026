@@ -15,7 +15,7 @@ export interface PredictionReactionEvent {
   template: `
     <div style="padding: 11px 0; border-bottom: 1px solid var(--bg-border)">
       <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 7px">
-        <app-avatar [player]="result.player" [size]="34" />
+        <app-avatar [player]="result.player" [size]="34" [showFlag]="true" />
         <span
           [style.flex]="1"
           [style.font-weight]="isMe ? 700 : 600"

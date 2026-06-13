@@ -113,17 +113,12 @@ function readFirebaseConfig() {
 }
 
 function buildEnvironmentFile(production, firebase) {
-  return `import type { FirebaseOptions } from 'firebase/app';
-
-interface AppEnvironment {
-  readonly production: boolean;
-  readonly firebase: FirebaseOptions & {
-    readonly vapidKey: string;
-  };
-}
+  if (production) {
+    return `import type { AppEnvironment } from './environment.model';
 
 export const environment = {
-  production: ${production},
+  production: true,
+  useEmulators: false,
   firebase: {
     apiKey: ${JSON.stringify(firebase.apiKey)},
     authDomain: ${JSON.stringify(firebase.authDomain)},
@@ -135,4 +130,36 @@ export const environment = {
   }
 } satisfies AppEnvironment;
 `;
+  }
+
+  const useEmulators = readUseFirebaseEmulators();
+
+  return `import type { AppEnvironment } from './environment.model';
+import { DEFAULT_FIREBASE_EMULATORS } from './environment.model';
+
+export const environment = {
+  production: false,
+  useEmulators: ${useEmulators},
+  firebase: {
+    apiKey: ${JSON.stringify(firebase.apiKey)},
+    authDomain: ${JSON.stringify(firebase.authDomain)},
+    projectId: ${JSON.stringify(firebase.projectId)},
+    storageBucket: ${JSON.stringify(firebase.storageBucket)},
+    messagingSenderId: ${JSON.stringify(firebase.messagingSenderId)},
+    appId: ${JSON.stringify(firebase.appId)},
+    vapidKey: ${JSON.stringify(firebase.vapidKey)}
+  },
+  emulators: DEFAULT_FIREBASE_EMULATORS
+} satisfies AppEnvironment;
+`;
+}
+
+function readUseFirebaseEmulators() {
+  const raw = process.env.USE_FIREBASE_EMULATORS?.trim().toLowerCase();
+
+  if (raw === 'false' || raw === '0' || raw === 'no') {
+    return false;
+  }
+
+  return true;
 }

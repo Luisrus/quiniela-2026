@@ -5,35 +5,56 @@ import { Component, EventEmitter, Input, Output } from '@angular/core';
   standalone: true,
   host: { style: 'display: block' },
   template: `
-    <div style="display: flex; gap: 5px; flex-wrap: wrap">
+    <div class="prediction-reactions">
       @for (emoji of emojis; track emoji) {
         @let count = reactionCounts[emoji] || 0;
         @let active = myReact === emoji;
         @let show = count > 0 || active;
         <button
           type="button"
+          class="reaction-btn"
           (click)="react.emit(emoji)"
-          [style.padding]="'3px 8px'"
-          [style.border-radius.px]="20"
-          [style.border]="'none'"
-          [style.background]="active ? 'var(--accent-muted)' : show ? 'var(--bg-elevated)' : 'rgba(255,255,255,0.03)'"
-          [style.outline]="active ? '1.5px solid var(--accent)' : 'none'"
-          [style.font-size.px]="13"
-          [style.cursor]="'pointer'"
-          [style.opacity]="show ? 1 : 0.6"
-          [style.display]="'inline-flex'"
-          [style.align-items]="'center'"
-          [style.gap.px]="3"
-          [style.color]="'var(--text-primary)'"
-          [style.transition]="'all 140ms'"
+          [class.active]="active"
+          [class.is-empty]="!show"
         >
-          {{ emoji }}
+          <span class="reaction-emoji">{{ emoji }}</span>
           @if (count > 0) {
-            <span style="font-size: 11px; font-weight: 700; color: var(--text-secondary)">{{ count }}</span>
+            <span class="reaction-count">{{ count }}</span>
           }
         </button>
       }
     </div>
+  `,
+  styles: `
+    .prediction-reactions {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-top: 2px;
+    }
+
+    .prediction-reactions .reaction-btn {
+      min-height: 36px;
+      padding: 4px 10px;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+
+    .prediction-reactions .reaction-btn.is-empty {
+      opacity: 0.72;
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .prediction-reactions .reaction-emoji {
+      font-size: 16px;
+      line-height: 1;
+    }
+
+    .prediction-reactions .reaction-count {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-secondary);
+    }
   `
 })
 export class PredictionReactionsComponent {
