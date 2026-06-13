@@ -207,11 +207,13 @@ h1 {
 
 .admin-picker,
 .admin-invite-form,
-.admin-filter-card {
+.admin-filter-card,
+.admin-update-card {
   gap: 10px;
 }
 
-.admin-filter-card {
+.admin-filter-card,
+.admin-update-card {
   flex-shrink: 0;
 }
 

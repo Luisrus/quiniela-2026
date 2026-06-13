@@ -14,6 +14,7 @@ import {
 import type { Pronostico } from '../../core/models/pronostico.model';
 import type { Usuario, UsuarioTipo } from '../../core/models/usuario.model';
 import { AdminService } from '../../core/services/admin.service';
+import { AppUpdateService } from '../../core/services/app-update.service';
 import { PartidosService } from '../../core/services/partidos.service';
 import { PronosticosService } from '../../core/services/pronosticos.service';
 import { UsuariosService } from '../../core/services/usuarios.service';
@@ -76,6 +77,7 @@ export class AdminPage {
   private readonly pronosticosService = inject(PronosticosService);
   private readonly usuariosService = inject(UsuariosService);
   private readonly adminService = inject(AdminService);
+  private readonly appUpdateService = inject(AppUpdateService);
   private readonly torneosService = inject(TorneosService);
 
   protected readonly estados = partidoEstados;
@@ -199,6 +201,7 @@ export class AdminPage {
   protected readonly nuevoInvitado = signal('');
   protected readonly savingId = signal<string | null>(null);
   protected readonly guardandoPronostico = signal(false);
+  protected readonly enviandoActualizacion = signal(false);
   protected readonly savingJugadorUid = signal<string | null>(null);
   protected readonly creandoInvitado = signal(false);
   protected readonly skeletonRows: readonly number[] = [1, 2, 3, 4];
@@ -333,6 +336,16 @@ export class AdminPage {
     }
 
     this.activeTab.set(tab);
+  }
+
+  protected async avisarActualizacionApp(): Promise<void> {
+    this.enviandoActualizacion.set(true);
+
+    try {
+      await this.appUpdateService.requestUserRefresh();
+    } finally {
+      this.enviandoActualizacion.set(false);
+    }
   }
 
   protected cambiarResultadosFiltro(value: string): void {

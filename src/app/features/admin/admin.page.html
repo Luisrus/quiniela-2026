@@ -22,6 +22,21 @@
   </header>
 
   <main class="admin-list">
+    <div class="admin-card admin-update-card">
+      <div>
+        <p class="player-name">Actualización de app</p>
+        <p class="admin-hint">Úsalo después de desplegar para mostrar el botón de actualizar a usuarios con la app abierta.</p>
+      </div>
+      <button
+        type="button"
+        class="save-button secondary-button"
+        [disabled]="enviandoActualizacion()"
+        (click)="avisarActualizacionApp()"
+      >
+        {{ enviandoActualizacion() ? 'Enviando...' : 'Avisar actualización' }}
+      </button>
+    </div>
+
     @if (activeTab() === 'resultados') {
       <div class="admin-warning" role="status">
         <p class="admin-warning-title">Marcadores automáticos</p>
