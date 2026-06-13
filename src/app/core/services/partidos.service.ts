@@ -32,6 +32,7 @@ import { dayKeyBounds, todayDayKey, uniqueStrings, weekDateBounds, weekRangeKey 
 import { FirestoreErrorService } from './firestore-error.service';
 
 const DOCUMENT_ID_BATCH = 30;
+const JUGADOS_LIMIT = 30;
 const ESTADOS_OCTAVOS_INICIADO: readonly PartidoEstado[] = ['en_juego', 'finalizado'];
 
 @Injectable({
@@ -111,14 +112,14 @@ export class PartidosService {
     );
   }
 
-  /** Jugados: todos los finalizados antes de octavos; desde octavos solo fases eliminatorias. */
+  /** Jugados: antes de octavos devuelve los últimos JUGADOS_LIMIT finalizados; desde octavos solo fases eliminatorias. */
   partidosJugados$(): Observable<readonly Partido[]> {
     if (this.partidosJugadosCache$ === null) {
       this.partidosJugadosCache$ = this.octavosIniciados$().pipe(
         switchMap((desdeOctavos) =>
           desdeOctavos
             ? this.partidosFinalizadosDesdeOctavos$()
-            : this.partidosPorEstado$('finalizado', 'desc')
+            : this.partidosFinalizadosRecientes$()
         ),
         shareReplay({ bufferSize: 1, refCount: false })
       );
@@ -243,6 +244,19 @@ export class PartidosService {
       docData(this.partidoRef(id), { idField: 'id' }) as Observable<Partido | undefined>,
       undefined,
       'No se pudo cargar ese partido. El árbitro lo mandó al túnel.'
+    );
+  }
+
+  private partidosFinalizadosRecientes$(): Observable<readonly Partido[]> {
+    return this.getOrCreatePartidosPorEstado('finalizado_recientes_desc', () =>
+      this.listenPartidosQuery(
+        query(
+          this.partidosCollection,
+          where('estado', '==', 'finalizado'),
+          orderBy('fechaInicio', 'desc'),
+          limit(JUGADOS_LIMIT)
+        )
+      )
     );
   }
 

@@ -113,34 +113,17 @@ export class PerfilPage {
     ),
     { initialValue: [] as readonly ApuestaDia[] }
   );
-  private readonly partidoIds = computed(() =>
-    uniqueStrings([
-      ...(this.pronosticosSource() ?? []).map((pronostico) => pronostico.partidoId),
-      ...(this.retosRecibidosSource() ?? []).map((apuesta) => apuesta.partidoId)
-    ])
-  );
-  private readonly partidosLoadKey = computed(() => {
-    if (this.pronosticosSource() === undefined) {
-      return undefined;
-    }
-
-    return this.partidoIds().join('|');
-  });
-  private readonly partidosSource = toSignal(
-    toObservable(this.partidosLoadKey).pipe(
-      switchMap((loadKey) => {
-        if (loadKey === undefined) {
-          return of(undefined);
-        }
-
-        if (loadKey === '') {
-          return of([] as const);
-        }
-
-        return this.partidosService.partidosPorIds$(loadKey.split('|'));
-      })
-    ),
+  private readonly jugadosSource = toSignal(
+    this.partidosService.partidosJugados$(),
     { initialValue: undefined }
+  );
+  private readonly apuestaPartidoIds = computed(() =>
+    uniqueStrings((this.retosRecibidosSource() ?? []).map((apuesta) => apuesta.partidoId))
+  );
+  private readonly apuestaPartidosSource = toSignal(
+    toObservable(this.apuestaPartidoIds).pipe(
+      switchMap((ids) => this.partidosService.partidosPorIds$(ids))
+    )
   );
   private readonly programadosSource = toSignal(
     toObservable(this.apuestaSheetOpen).pipe(
@@ -176,7 +159,7 @@ export class PerfilPage {
   protected readonly isLoading = computed(() => {
     if (
       this.usuariosSource() === undefined ||
-      this.partidosSource() === undefined ||
+      this.jugadosSource() === undefined ||
       this.pronosticosSource() === undefined
     ) {
       return true;
@@ -223,9 +206,7 @@ export class PerfilPage {
   });
 
   protected readonly played = computed(() =>
-    (this.partidosSource() ?? [])
-      .filter((partido) => partido.estado === 'finalizado')
-      .map((partido) => toUiMatch(partido))
+    (this.jugadosSource() ?? []).map((partido) => toUiMatch(partido))
   );
 
   protected readonly partidosApuesta = computed(() =>
@@ -236,8 +217,12 @@ export class PerfilPage {
 
   protected readonly partidoJornadaKeys = computed<Readonly<Record<string, string>>>(() => {
     const keys: Record<string, string> = {};
+    const allPartidos = [
+      ...(this.jugadosSource() ?? []),
+      ...(this.apuestaPartidosSource() ?? [])
+    ];
 
-    for (const partido of this.partidosSource() ?? []) {
+    for (const partido of allPartidos) {
       keys[partido.id] = partido.fase === 'grupos' && typeof partido.jornada === 'number'
         ? `J${partido.jornada}`
         : partido.fase;
@@ -268,11 +253,11 @@ export class PerfilPage {
   });
 
   protected readonly exactCount = computed(() =>
-    this.history().filter((item) => item.pred.puntosGanados === 3).length
+    (this.pronosticosSource() ?? []).filter((p) => p.puntosGanados === 3).length
   );
 
   protected readonly correctCount = computed(() =>
-    this.history().filter((item) => item.pred.puntosGanados === 1).length
+    (this.pronosticosSource() ?? []).filter((p) => p.puntosGanados === 1).length
   );
 
   protected readonly premios: readonly PremioEspecialMeta[] = PREMIOS_ESPECIALES;
@@ -341,8 +326,11 @@ export class PerfilPage {
   }
 
   protected matchName(partidoId: string): string {
-    const match = (this.partidosSource() ?? [])
-      .find((partido) => partido.id === partidoId);
+    const allPartidos = [
+      ...(this.jugadosSource() ?? []),
+      ...(this.apuestaPartidosSource() ?? [])
+    ];
+    const match = allPartidos.find((partido) => partido.id === partidoId);
 
     if (match === undefined) {
       return 'Partido pendiente';

@@ -14,7 +14,6 @@ import { PartidosService } from '../../core/services/partidos.service';
 import { PronosticosService } from '../../core/services/pronosticos.service';
 import { PronosticosEspecialesService } from '../../core/services/pronosticos-especiales.service';
 import { UsuariosService } from '../../core/services/usuarios.service';
-import { uniqueStrings } from '../../core/utils/partido-dia.util';
 import { esTitular } from '../../core/utils/usuario-tipo.util';
 import type { Pronostico } from '../../core/models/pronostico.model';
 import { AvatarComponent } from '../../shared/components/quiniela-ui/avatar.component';
@@ -74,36 +73,14 @@ export class WrappedPage {
     ),
     { initialValue: undefined }
   );
-  private readonly partidoIds = computed(() =>
-    uniqueStrings((this.pronosticosSource() ?? []).map((pronostico) => pronostico.partidoId))
-  );
-  private readonly partidosLoadKey = computed(() => {
-    if (this.pronosticosSource() === undefined) {
-      return undefined;
-    }
-
-    return this.partidoIds().join('|');
-  });
-  private readonly partidosSource = toSignal(
-    toObservable(this.partidosLoadKey).pipe(
-      switchMap((loadKey) => {
-        if (loadKey === undefined) {
-          return of(undefined);
-        }
-
-        if (loadKey === '') {
-          return of([] as const);
-        }
-
-        return this.partidosService.partidosPorIds$(loadKey.split('|'));
-      })
-    ),
+  private readonly jugadosSource = toSignal(
+    this.partidosService.partidosJugados$(),
     { initialValue: undefined }
   );
 
   protected readonly isLoading = computed(() =>
     this.usuariosSource() === undefined ||
-    this.partidosSource() === undefined ||
+    this.jugadosSource() === undefined ||
     this.pronosticosSource() === undefined
   );
 
@@ -124,9 +101,7 @@ export class WrappedPage {
   );
 
   protected readonly played = computed(() =>
-    (this.partidosSource() ?? [])
-      .filter((partido) => partido.estado === 'finalizado')
-      .map((partido) => toUiMatch(partido))
+    (this.jugadosSource() ?? []).map((partido) => toUiMatch(partido))
   );
 
   protected readonly history = computed<readonly WrappedHistoryItem[]>(() => {
@@ -149,15 +124,15 @@ export class WrappedPage {
   });
 
   protected readonly exactCount = computed(() =>
-    this.history().filter((item) => item.pred.puntosGanados === 3).length
+    (this.pronosticosSource() ?? []).filter((p) => p.puntosGanados === 3).length
   );
 
   protected readonly correctCount = computed(() =>
-    this.history().filter((item) => item.pred.puntosGanados === 1).length
+    (this.pronosticosSource() ?? []).filter((p) => p.puntosGanados === 1).length
   );
 
   protected readonly missCount = computed(() =>
-    this.history().filter((item) => item.pred.puntosGanados === 0).length
+    (this.pronosticosSource() ?? []).filter((p) => p.puntosGanados === 0).length
   );
 
   protected readonly mejorPartido = computed(() => {
