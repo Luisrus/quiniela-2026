@@ -2,6 +2,7 @@ import { resolveCrestUrl } from '../../core/config/equipos-crest.config';
 import type { Partido, PartidoFase } from '../../core/models/partido.model';
 import type { Pronostico } from '../../core/models/pronostico.model';
 import type { Reaccion, ReaccionTargetTipo } from '../../core/models/reaccion.model';
+import { esTitular } from '../../core/utils/usuario-tipo.util';
 import type { Usuario } from '../../core/models/usuario.model';
 import type {
   UiMatch,
@@ -37,7 +38,8 @@ export function toUiPlayer(usuario: Usuario, position: number): UiPlayer {
     medals: [],
     fav: resolveCrestUrl(usuario.equipoFavorito ?? ''),
     position,
-    photoUrl: normalizePhotoUrl(usuario.fotoUrl)
+    photoUrl: normalizePhotoUrl(usuario.fotoUrl),
+    esTitular: esTitular(usuario.tipo)
   };
 }
 

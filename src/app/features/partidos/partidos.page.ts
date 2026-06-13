@@ -104,7 +104,6 @@ export class PartidosPage {
 
   protected readonly playersApuesta = computed(() =>
     (this.usuariosSource() ?? [])
-      .filter((usuario) => esTitular(usuario.tipo))
       .map((usuario, index) => toUiPlayer(usuario, index + 1))
   );
 

@@ -72,8 +72,8 @@ import { BottomSheetComponent } from './bottom-sheet.component';
             Que apuestas
           </label>
           <div style="display: flex; gap: 10px; margin-bottom: 10px">
-            <label style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 10px; border: 1px solid var(--bg-border); border-radius: 8px; background: var(--bg-elevated); cursor: pointer" [style.border-color]="tipoApuesta() === 'punto' ? 'var(--accent)' : 'var(--bg-border)'">
-              <input type="radio" name="tipoApuesta" value="punto" (change)="tipoApuesta.set('punto')" [checked]="tipoApuesta() === 'punto'" style="margin: 0">
+            <label style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 10px; border: 1px solid var(--bg-border); border-radius: 8px; background: var(--bg-elevated); cursor: pointer" [style.border-color]="tipoApuesta() === 'punto' ? 'var(--accent)' : 'var(--bg-border)'" [style.opacity]="bothTitulares() ? 1 : 0.5" [style.pointer-events]="bothTitulares() ? 'auto' : 'none'">
+              <input type="radio" name="tipoApuesta" value="punto" (change)="tipoApuesta.set('punto')" [checked]="tipoApuesta() === 'punto'" [disabled]="!bothTitulares()" style="margin: 0">
               <span style="font-size: 13px; font-weight: 600">1 punto real</span>
             </label>
             <label style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 10px; border: 1px solid var(--bg-border); border-radius: 8px; background: var(--bg-elevated); cursor: pointer" [style.border-color]="tipoApuesta() === 'texto' ? 'var(--accent)' : 'var(--bg-border)'">
@@ -130,6 +130,23 @@ export class ApuestaJornadaSheetComponent {
     this.players.filter((player) => player.id !== this.userId)
   );
 
+  protected readonly currentUser = computed(() =>
+    this.players.find((player) => player.id === this.userId)
+  );
+
+  protected readonly bothTitulares = computed(() => {
+    const me = this.currentUser();
+    if (!me || !me.esTitular) {
+      return false;
+    }
+    const opponentId = this.selectedUid();
+    if (!opponentId) {
+      return true; // Asume true hasta que elija rival (si es titular)
+    }
+    const opponent = this.players.find((p) => p.id === opponentId);
+    return opponent?.esTitular ?? false;
+  });
+
   protected readonly canSave = computed(() => {
     const hasTextIfText = this.tipoApuesta() === 'punto' || this.apuestaTexto().trim().length > 0;
 
@@ -147,6 +164,10 @@ export class ApuestaJornadaSheetComponent {
   protected onPlayerSelect(event: Event): void {
     const select = event.target as HTMLSelectElement;
     this.selectedUid.set(select.value);
+
+    if (!this.bothTitulares()) {
+      this.tipoApuesta.set('texto');
+    }
   }
 
   protected onTextoChange(event: Event): void {
@@ -168,8 +189,8 @@ export class ApuestaJornadaSheetComponent {
         partidoId: match.id,
         jornadaKey: this.matchJornadaKeys[match.id] ?? jornadaKeyForMatch(match),
         retadoUid: this.selectedUid(),
-        porUnPuntoReal: this.tipoApuesta() === 'punto',
-        apuestaTexto: this.tipoApuesta() === 'punto' ? '' : this.apuestaTexto().trim()
+        porUnPuntoReal: this.bothTitulares() ? this.tipoApuesta() === 'punto' : false,
+        apuestaTexto: (!this.bothTitulares() || this.tipoApuesta() === 'texto') ? this.apuestaTexto().trim() : ''
       });
       this.close.emit();
     } finally {

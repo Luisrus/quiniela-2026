@@ -121,8 +121,8 @@ export class ApuestasDiaService {
     const retadorEsTitular = await this.usuarios.esTitularUid(uid);
     const retadoEsTitular = await this.usuarios.esTitularUid(input.retadoUid);
 
-    if (!retadorEsTitular || !retadoEsTitular) {
-      this.toasts.error('Las apuestas son solo entre titulares.');
+    if (input.porUnPuntoReal && (!retadorEsTitular || !retadoEsTitular)) {
+      this.toasts.error('Las apuestas por puntos son solo entre titulares.');
       return;
     }
 

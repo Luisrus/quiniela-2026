@@ -17,6 +17,7 @@ export interface UiPlayer {
   readonly fav: string;
   readonly position: number;
   readonly photoUrl: string | null;
+  readonly esTitular: boolean;
 }
 
 export interface UiTeam {
