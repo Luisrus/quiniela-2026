@@ -240,38 +240,6 @@
                 }
               </button>
             </article>
-
-            <section class="admin-card historial-card">
-              <p class="field-label">Historial de {{ jugador.nombre }}</p>
-              @if (historialJugador().length === 0) {
-                <p class="admin-hint">Todavía no hay pronósticos previos para este jugador.</p>
-              } @else {
-                <div class="historial-list">
-                  @for (item of historialJugador(); track item.pronostico.id) {
-                    <button
-                      type="button"
-                      class="historial-row"
-                      [class.is-active]="item.esSeleccionActual"
-                      (click)="seleccionarDesdeHistorial(item.partido.id)"
-                    >
-                      <span class="historial-match">
-                        <span class="historial-estado">{{ estadoLabel(item.partido.estado) }}</span>
-                        <span class="historial-teams">
-                        <app-team-flag [name]="item.partido.equipoLocal" [url]="crestFor(item.partido.equipoLocal, item.partido.banderas.local)" [size]="16" />
-                        {{ item.partido.equipoLocal }}
-                        vs
-                        {{ item.partido.equipoVisitante }}
-                        <app-team-flag [name]="item.partido.equipoVisitante" [url]="crestFor(item.partido.equipoVisitante, item.partido.banderas.visitante)" [size]="16" />
-                        </span>
-                      </span>
-                      <span class="historial-score">
-                        {{ item.pronostico.golesLocal }}-{{ item.pronostico.golesVisitante }}
-                      </span>
-                    </button>
-                  }
-                </div>
-              }
-            </section>
           }
         }
 

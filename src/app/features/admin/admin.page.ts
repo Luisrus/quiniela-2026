@@ -1,5 +1,6 @@
-import { computed, Component, inject, signal } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
+import { computed, Component, effect, inject, signal, untracked } from '@angular/core';
+import { toObservable, toSignal } from '@angular/core/rxjs-interop';
+import { combineLatest, filter, of, switchMap } from 'rxjs';
 import { UpperCasePipe } from '@angular/common';
 
 import type { AdminJugadorUpdate } from '../../core/models/admin.model';
@@ -73,24 +74,55 @@ export class AdminPage {
   private readonly adminService = inject(AdminService);
   private readonly torneosService = inject(TorneosService);
 
-  private readonly partidosSource = toSignal(this.partidosService.partidos$(), {
-    initialValue: undefined
-  });
-  private readonly pronosticosSource = toSignal(this.pronosticosService.pronosticos$(), {
-    initialValue: undefined
-  });
-  private readonly usuariosSource = toSignal(this.usuariosService.usuarios$(), {
-    initialValue: undefined
-  });
-  private readonly torneosSource = toSignal(this.torneosService.torneos$(), {
-    initialValue: undefined
-  });
-
   protected readonly estados = partidoEstados;
   protected readonly fases = partidoFases;
   protected readonly activeTab = signal<AdminTab>('resultados');
   protected readonly selectedPartidoId = signal('');
   protected readonly selectedJugadorUid = signal('');
+  
+  private readonly activeTab$ = toObservable(this.activeTab);
+
+  private readonly partidosSource = toSignal(
+    this.activeTab$.pipe(
+      filter((tab) => tab === 'resultados' || tab === 'pronosticos'),
+      switchMap(() => this.partidosService.partidos$())
+    ),
+    { initialValue: undefined }
+  );
+
+  private readonly usuariosSource = toSignal(
+    this.activeTab$.pipe(
+      filter((tab) => tab === 'jugadores' || tab === 'pronosticos' || tab === 'torneos'),
+      switchMap(() => this.usuariosService.usuarios$())
+    ),
+    { initialValue: undefined }
+  );
+
+  private readonly torneosSource = toSignal(
+    this.activeTab$.pipe(
+      filter((tab) => tab === 'torneos'),
+      switchMap(() => this.torneosService.torneos$())
+    ),
+    { initialValue: undefined }
+  );
+
+  private readonly pronosticoSeleccionado$ = combineLatest([
+    this.activeTab$,
+    toObservable(this.selectedJugadorUid),
+    toObservable(this.selectedPartidoId)
+  ]).pipe(
+    switchMap(([tab, uid, partidoId]) => {
+      if (tab === 'pronosticos' && uid !== '' && partidoId !== '') {
+        return this.pronosticosService.pronostico$(uid, partidoId);
+      }
+      return of(undefined);
+    })
+  );
+
+  private readonly pronosticoGuardadoSource = toSignal(this.pronosticoSeleccionado$, {
+    initialValue: undefined
+  });
+
   protected readonly drafts = signal<DraftsPartidos>({});
   protected readonly pronosticoDraft = signal<PronosticoDraft>(emptyPronosticoDraft());
   protected readonly jugadorDrafts = signal<JugadorDrafts>({});
@@ -112,12 +144,14 @@ export class AdminPage {
     { value: 'torneos', label: 'Torneos' }
   ];
 
-  protected readonly isLoading = computed(() =>
-    this.partidosSource() === undefined ||
-    this.pronosticosSource() === undefined ||
-    this.usuariosSource() === undefined ||
-    this.torneosSource() === undefined
-  );
+  protected readonly isLoading = computed(() => {
+    const tab = this.activeTab();
+    if (tab === 'resultados') return this.partidosSource() === undefined;
+    if (tab === 'pronosticos') return this.partidosSource() === undefined || this.usuariosSource() === undefined;
+    if (tab === 'jugadores') return this.usuariosSource() === undefined;
+    if (tab === 'torneos') return this.torneosSource() === undefined || this.usuariosSource() === undefined;
+    return false;
+  });
 
   protected readonly partidos = computed(() =>
     [...(this.partidosSource() ?? [])].sort((left, right) =>
@@ -156,51 +190,50 @@ export class AdminPage {
     [...(this.torneosSource() ?? [])].sort((a, b) => a.nombre.localeCompare(b.nombre))
   );
 
-  protected readonly pronosticoGuardado = computed(() => {
-    const uid = this.selectedJugadorUid();
-    const partidoId = this.selectedPartidoId();
+  constructor() {
+    effect(() => {
+      const tab = this.activeTab();
+      const partidos = this.partidosCalendario();
+      const jugadores = this.jugadores();
 
-    if (uid === '' || partidoId === '') {
-      return undefined;
-    }
-
-    return (this.pronosticosSource() ?? []).find(
-      (pronostico) => pronostico.uid === uid && pronostico.partidoId === partidoId
-    );
-  });
-
-  protected readonly historialJugador = computed<readonly HistorialPronosticoItem[]>(() => {
-    const uid = this.selectedJugadorUid();
-    const partidoId = this.selectedPartidoId();
-
-    if (uid === '') {
-      return [];
-    }
-
-    const partidosPorId = new Map(
-      (this.partidosSource() ?? []).map((partido) => [partido.id, partido])
-    );
-
-    return (this.pronosticosSource() ?? [])
-      .filter((pronostico) => pronostico.uid === uid)
-      .map((pronostico) => {
-        const partido = partidosPorId.get(pronostico.partidoId);
-
-        if (partido === undefined) {
-          return null;
+      if (tab === 'pronosticos' && partidos.length > 0 && jugadores.length > 0) {
+        if (this.selectedPartidoId() === '') {
+          this.selectedPartidoId.set(partidos[0]!.id);
         }
+        if (this.selectedJugadorUid() === '') {
+          this.selectedJugadorUid.set(jugadores[0]!.uid);
+        }
+      }
+    }, { allowSignalWrites: true });
 
-        return {
-          pronostico,
-          partido,
-          esSeleccionActual: pronostico.partidoId === partidoId
-        };
-      })
-      .filter((item): item is HistorialPronosticoItem => item !== null)
-      .sort((left, right) =>
-        fechaPartidoMillis(right.partido) - fechaPartidoMillis(left.partido)
-      );
-  });
+    effect(() => {
+      const tab = this.activeTab();
+      const jugadores = this.jugadores();
+
+      if (tab === 'jugadores' && jugadores.length > 0) {
+        untracked(() => {
+          this.jugadorDrafts.update((drafts) => {
+            const newDrafts = { ...drafts };
+            for (const jugador of jugadores) {
+              if (!newDrafts[jugador.uid]) {
+                newDrafts[jugador.uid] = jugadorDraftFromUsuario(jugador);
+              }
+            }
+            return newDrafts;
+          });
+        });
+      }
+    }, { allowSignalWrites: true });
+
+    effect(() => {
+      const guardado = this.pronosticoGuardadoSource();
+      untracked(() => {
+        this.pronosticoDraft.set(pronosticoDraftFromPronostico(guardado));
+      });
+    }, { allowSignalWrites: true });
+  }
+
+  protected readonly pronosticoGuardado = computed(() => this.pronosticoGuardadoSource() ?? undefined);
 
   protected readonly puedeGuardarPronostico = computed(() => {
     const draft = this.pronosticoDraft();
@@ -222,29 +255,14 @@ export class AdminPage {
     }
 
     this.activeTab.set(tab);
-
-    if (tab === 'pronosticos') {
-      this.inicializarPronosticosTab();
-    }
-
-    if (tab === 'jugadores') {
-      this.inicializarJugadoresTab();
-    }
   }
 
   protected seleccionarPartido(partidoId: string): void {
     this.selectedPartidoId.set(partidoId);
-    this.cargarPronosticoDraft();
   }
 
   protected seleccionarJugador(uid: string): void {
     this.selectedJugadorUid.set(uid);
-    this.cargarPronosticoDraft();
-  }
-
-  protected seleccionarDesdeHistorial(partidoId: string): void {
-    this.selectedPartidoId.set(partidoId);
-    this.cargarPronosticoDraft();
   }
 
   protected draftFor(partido: Partido): PartidoDraft {
@@ -380,7 +398,6 @@ export class AdminPage {
     try {
       await this.adminService.crearInvitado(nombre);
       this.nuevoInvitado.set('');
-      this.inicializarJugadoresTab();
     } finally {
       this.creandoInvitado.set(false);
     }
@@ -454,48 +471,7 @@ export class AdminPage {
     return `${this.estadoLabel(partido.estado)} · ${partido.equipoLocal} vs ${partido.equipoVisitante} · ${this.fechaLabel(partido)}`;
   }
 
-  private inicializarPronosticosTab(): void {
-    const partidos = this.partidosCalendario();
-    const jugadores = this.jugadores();
-    const currentPartidoId = this.selectedPartidoId();
-    const currentJugadorUid = this.selectedJugadorUid();
 
-    const partidoId = partidos.some((partido) => partido.id === currentPartidoId)
-      ? currentPartidoId
-      : partidos[0]?.id ?? '';
-
-    const jugadorUid = jugadores.some((jugador) => jugador.uid === currentJugadorUid)
-      ? currentJugadorUid
-      : jugadores[0]?.uid ?? '';
-
-    this.selectedPartidoId.set(partidoId);
-    this.selectedJugadorUid.set(jugadorUid);
-    this.cargarPronosticoDraft();
-  }
-
-  private cargarPronosticoDraft(): void {
-    const uid = this.selectedJugadorUid();
-    const partidoId = this.selectedPartidoId();
-
-    if (uid === '' || partidoId === '') {
-      this.pronosticoDraft.set(emptyPronosticoDraft());
-      return;
-    }
-
-    const pronostico = (this.pronosticosSource() ?? []).find(
-      (item) => item.uid === uid && item.partidoId === partidoId
-    );
-
-    this.pronosticoDraft.set(pronosticoDraftFromPronostico(pronostico));
-  }
-
-  private inicializarJugadoresTab(): void {
-    this.jugadorDrafts.set(
-      Object.fromEntries(
-        this.jugadores().map((usuario) => [usuario.uid, jugadorDraftFromUsuario(usuario)])
-      )
-    );
-  }
 
   private patchDraft(partido: Partido, patch: Partial<PartidoDraft>): void {
     this.drafts.update((drafts) => ({
