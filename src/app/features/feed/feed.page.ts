@@ -26,6 +26,7 @@ import {
 @Component({
   selector: 'app-feed-page',
   standalone: true,
+  host: { style: 'display: block; height: 100%' },
   imports: [
     AvatarComponent,
     EmptyStateComponent,
