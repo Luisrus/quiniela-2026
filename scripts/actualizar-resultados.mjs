@@ -24,16 +24,30 @@ const liveEstados = new Set(['IN_PLAY', 'PAUSED', 'EXTRA_TIME', 'PENALTY_SHOOTOU
 const finalEstados = new Set(['FINISHED', 'AWARDED']);
 
 const deleteField = Symbol('deleteField');
+const TIMEZONE = 'America/Guatemala';
 
-export async function runActualizarResultados({ footballDataToken, projectId, accessToken }) {
+export async function runActualizarResultados({
+  footballDataToken,
+  projectId,
+  accessToken,
+  dayKeys = []
+}) {
   const firestore = createFirestoreClient(projectId, accessToken);
   const now = new Date();
+  const dayKeySet = new Set(dayKeys);
+  const manualMode = dayKeySet.size > 0;
 
   const apiMatches = await fetchFootballDataMatches(footballDataToken);
   const syncState = await getSyncState(firestore);
-  const candidateMatches = apiMatches.filter((match) => partidoRequiereRevision(match, now));
+  const candidateMatches = manualMode
+    ? apiMatches.filter((match) => matchEnDayKeys(match, dayKeySet))
+    : apiMatches.filter((match) => partidoRequiereRevision(match, now));
   const partidosParaSync = candidateMatches
-    .filter((match) => partidoDebeSincronizarse(match, syncState, now))
+    .filter((match) =>
+      manualMode
+        ? partidoDebeSincronizarseManual(match, syncState)
+        : partidoDebeSincronizarse(match, syncState, now)
+    )
     .map((match) => toPartidoDoc(match, syncState, now));
 
   await upsertPartidos(firestore, partidosParaSync);
@@ -99,6 +113,8 @@ export async function runActualizarResultados({ footballDataToken, projectId, ac
   );
 
   console.log(JSON.stringify({
+    modo: manualMode ? 'manual' : 'automatico',
+    dias: manualMode ? [...dayKeySet] : undefined,
     partidosRevisados: candidateMatches.length,
     partidosActualizados: partidosParaSync.length,
     partidosEnJuego: livePartidos.length,
@@ -1105,6 +1121,39 @@ function partidoRequiereRevision(match, now) {
   return finalPollProgramado(match, now);
 }
 
+function parseSyncDayKeys() {
+  const fromArgv = process.argv
+    .find((arg) => arg.startsWith('--days='))
+    ?.slice('--days='.length);
+  const fromEnv = process.env.SYNC_DAY_KEYS;
+  const raw = fromArgv ?? fromEnv ?? '';
+
+  return raw
+    .split(',')
+    .map((value) => value.trim())
+    .filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(value));
+}
+
+function dayKeyFromMatch(match) {
+  const date = parseDate(match.utcDate);
+
+  if (date === null) {
+    return null;
+  }
+
+  return new Intl.DateTimeFormat('en-CA', { timeZone: TIMEZONE }).format(date);
+}
+
+function matchEnDayKeys(match, dayKeys) {
+  const dayKey = dayKeyFromMatch(match);
+
+  return dayKey !== null && dayKeys.has(dayKey);
+}
+
+function partidoDebeSincronizarseManual(_match, _syncState) {
+  return true;
+}
+
 function partidoDebeSincronizarse(match, syncState, now) {
   const inicio = parseDate(match.utcDate);
   const partidoId = String(match.id);
@@ -1423,10 +1472,13 @@ async function main() {
   const serviceAccount = parseServiceAccount(readFirebaseServiceAccountRaw());
   const accessToken = await createAccessToken(serviceAccount);
 
+  const dayKeys = parseSyncDayKeys();
+
   await runActualizarResultados({
     footballDataToken,
     projectId: serviceAccount.project_id,
-    accessToken
+    accessToken,
+    dayKeys
   });
 }
 

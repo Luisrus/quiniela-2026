@@ -11,6 +11,7 @@ import {
   type DocumentReference
 } from '@angular/fire/firestore';
 import type { Observable } from 'rxjs';
+import { shareReplay } from 'rxjs';
 
 import type { Torneo } from '../models/torneo.model';
 import { FirestoreErrorService } from './firestore-error.service';
@@ -25,13 +26,18 @@ export class TorneosService {
     this.firestore,
     'torneos'
   ) as CollectionReference<Torneo>;
+  private readonly torneosCache$ = this.createTorneosStream();
 
   torneos$(): Observable<readonly Torneo[]> {
+    return this.torneosCache$;
+  }
+
+  private createTorneosStream(): Observable<readonly Torneo[]> {
     return this.errors.handleStream(
       collectionData(this.torneosCollection, { idField: 'id' }) as Observable<readonly Torneo[]>,
       [] as readonly Torneo[],
       'No se pudieron cargar los torneos.'
-    );
+    ).pipe(shareReplay({ bufferSize: 1, refCount: false }));
   }
 
   async crearTorneo(torneo: Omit<Torneo, 'id'>): Promise<string> {

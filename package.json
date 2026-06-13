@@ -5,6 +5,7 @@
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
+    "emulators": "npx firebase-tools emulators:start --only auth,firestore",
     "build": "ng build",
     "build:prod": "node scripts/generate-environment.mjs production && ng build",
     "watch": "ng build --watch --configuration development",
@@ -16,6 +17,7 @@
     "deploy:functions": "node functions/sync-scripts.mjs && firebase deploy --only functions",
     "deploy:all": "npm run build:prod && node functions/sync-scripts.mjs && firebase deploy --only hosting,firestore:rules,functions",
     "actualizar-resultados": "node scripts/actualizar-resultados.mjs",
+    "actualizar-resultados:dias": "node scripts/actualizar-resultados.mjs --days=2026-06-12,2026-06-13",
     "recordar-pronosticos": "node scripts/recordar-pronosticos.mjs",
     "test:puntos": "node scripts/calcular-puntos.test.mjs"
   },
