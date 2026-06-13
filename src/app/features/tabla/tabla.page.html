@@ -60,7 +60,7 @@
           <app-empty-state
             emoji="👥"
             title="Sin titulares aún"
-            sub="Los invitados juegan por diversión abajo"
+            sub="Los invitados juegan en su propia sección abajo"
           />
         } @else {
           @for (player of titularesPlayers(); track player.id; let i = $index) {
@@ -77,7 +77,7 @@
             [attr.aria-expanded]="invitadosExpanded()"
             (click)="toggleInvitadosSection()"
           >
-            <span>🎟️ Invitados (solo por diversión)</span>
+            <span>🎟️ Invitados</span>
             <span class="guest-section-chevron" [class.is-expanded]="invitadosExpanded()">›</span>
           </button>
 
